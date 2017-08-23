@@ -1,6 +1,6 @@
 #############################################################
 # Code to aid in the analysis of flashiness according to 
-# Usinowicz et al. 2015. 
+# Usinowicz et al. 2016. 
 # 
 # This code is essentially designed to take basic USGS .csv data
 # with lake level and precipitation, in combination with any other
@@ -305,7 +305,7 @@ return(model.sim.ret)
 # or changing precipitation patterns are more responsible for amplifying 
 # variance (i.e. driving changes in flashiness).    
 # 
-# This function corresponds to equation (2) in Usinowicz et al 2015. Its
+# This function corresponds to equation (2) in Usinowicz et al 2016. Its
 # derivation is based first on the observation that the total variance in the predicted
 # values of a fitted model is equal to the sum of the squared coefficients, multiplied
 # by the variance in each variable. For an AR(1) model this would look something like: 
@@ -580,7 +580,7 @@ men.ar6.rn3.wrntm.wrn2 = bam (elevation ~ s(time, bs = "cr", k = 400)
 # parameter values. 
 
 # In order to drop or retain covariates, keep track of whether the AIC or GCV
-# change with their addition or removal. For Usinowicz et al. 2015 I did this 
+# change with their addition or removal. For Usinowicz et al. 2016 I did this 
 # by hand, keeping careful notes on changes in AIC and GCV. DO NOT use p values 
 # as an indicator of whether terms should be retained. However, p values may 
 # indicate which fitted covariates can be given interpretation outside of the 
