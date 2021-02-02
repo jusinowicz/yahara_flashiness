@@ -443,7 +443,17 @@ mendota_table = mendota_table[[right_table]]
 #Import precipitation time series from USGS (only goes back to 1951)
 url = paste("https://nwis.waterdata.usgs.gov/usa/nwis/uv/?cb_00010=on&cb_00045=on&cb_00060=on&cb_00065=on&cb_63160=on&format=html&site_no=05427718&period=&begin_date=1951-01-01&end_date=",
 	current_date, sep="")
-rain_table = read.csv(file = "")
+rain_table = url %>% 
+			   read_html() %>%
+			    html_nodes("table") %>% 
+  				html_table(fill = T)
+
+ #This might find more than one, but the biggest one is the one we want: 
+table_sizes = unlist(lapply(rain_table, nrow))
+right_table = which(table_sizes == max(table_sizes) )
+rain_table = rain_table[[right_table]]
+
+
 
 #Import other variables (e.g. impervious surface)
 impervious_table=read.csv(file = "")
