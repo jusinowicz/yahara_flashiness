@@ -46,68 +46,56 @@ nasa_pars = c("PRECTOTCORR")
 ##############################################################
 #PART 1: Data processing
 ##############################################################
-#Import lake-level time series as the response. These data for 
-#lake Mendota downloaded from 
-# https://waterdata.usgs.gov/nwis/dv/?site_no=05428000&agency_cd=USGS&amp;referred_module=sw
-#mendota_table=read.csv(file="mendota_example.csv")
-#Latest version of this for automated access: 
-#https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=05428000&startDT=1980-09-21&endDT=2023-09-21&parameterCd=00060,00065&siteStatus=all
-https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=05427718&startDT=2013-09-21&endDT=2014-09-21&parameterCd=00045&siteStatus=all
+#Import lake-level time series as the response. These data for
+#Lake Stage Level are from the USGS data base, e.g. for Lake
+#Mendota:  
+#https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=05427718&startDT=2013-09-21&endDT=2014-09-21&parameterCd=00045&siteStatus=all
 
+#Preallocate and get number of lakes
 n_lakes = length(site_keys)
 lake_table = vector("list", n_lakes)
 real_start = vector("list", n_lakes)
 
+#Loop over lakes to get stage level and dates: 
 for(n in 1:n_lakes){ 
 	#Use the USGS address format to get data over the date range
 	url1 = paste(url_base[1], site_keys[n], "&startDT=", start_date,
 		"&endDT=",current_date,"&parameterCd=00060,00065&siteStatus=all",sep="" )
 	
 	lake_table[[n]]= as.data.frame(read_delim(print(url1), comment = "#", delim="\t"))
-	
 	lake_table[[n]] = lake_table[[n]][-1,]
+	lake_table[[n]][,"datetime"] = as.POSIXct(lake_table[[n]][,"datetime"],
+                       format = '%Y-%m-%d %H:%M')
+	lake_table[[n]][,5] = as.numeric(as.character(lake_table[[n]][,5]))
+
+	lake_table[[n]] = lake_table[[n]][,c(3, 5)]
+	colnames(lake_table[[n]] ) = c("datetime", "level")
+
+	#Data seem to be at 15 min intervals by default. Aggregate these into 
+	#a mean daily level
+	lake_table[[n]] = lake_table[[n]] %>%
+  		mutate(day = as.Date(ymd_hms(datetime))) %>%
+  		group_by(day) %>%
+  		summarise(level = mean(level, na.rm = TRUE)) %>%
+  		as.data.frame()
 	
 	#Just in case we requested back too far, what is the actual start 
 	#date of the retrieved data?
-	real_start[[n]] = format(as.POSIXct(lake_table[[n]][1,"datetime"],
-                       format = '%Y-%m-%d %H:%M'),
-                		format = '%Y-%m-%d') 
-
-
+	real_start[[n]] = lake_table[[n]][1,"day"]
+                     
+	#Do some processing to remove ice-on days (approximately). This 
+	#function automatically removes winter days and converts data 
+	#table to a timeseries (ts) object 
+	lake_table[[n]] = remove.days(lake_table[[n]]$level, year(real_start[[n]] ) )
 }
 
-
-
-#The USGS address has a nice format that we can take advantage of to fit the most 
-#current data: 
-url1 = paste("https://waterdata.usgs.gov/nwis/dv?cb_00065=on&format=html&site_no=05428000&referred_module=sw&period=&begin_date=1951-01-01&end_date=", 
-	current_date, sep="") 
-
-#Scrape the table(s) from the webpage
-mendota_table= url %>% 
-			   read_html() %>%
-			    html_nodes("table") %>% 
-  				html_table(fill = T)
-
-#This might find more than one, but the biggest one is the one we want: 
-table_sizes = unlist(lapply(mendota_table, nrow))
-right_table = which(table_sizes == max(table_sizes) )
-mendota_table = mendota_table[[right_table]]
-
-#Import precipitation time series from USGS (only goes back to 1951)
-url = paste("https://nwis.waterdata.usgs.gov/usa/nwis/uv/?cb_00010=on&cb_00045=on&cb_00060=on&cb_00065=on&cb_63160=on&format=html&site_no=05427718&period=&begin_date=1951-01-01&end_date=",
-	current_date, sep="")
-rain_table = url %>% 
-			   read_html() %>%
-			    html_nodes("table") %>% 
-  				html_table(fill = T)
-
+#Get the precipitation data from the NASA POWER collection
 
 daily_single_ag <- get_power(
   community = "ag",
-  lonlat = c(151.81, -27.48),
-  pars = c("RH2M", "T2M", "PRECTOTCORR"),
-  dates = c("1985-01-01", "1985-01-31"),
+  lonlat = c(43.0930, -89.3727),
+  pars =  nasa_pars,
+  dates = c(paste(start_date), paste(current_date)),
   temporal_api = "daily"
 )
 
