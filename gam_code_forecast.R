@@ -11,7 +11,7 @@
 # as opposed to a single coherent program. To summarize the types
 # of routines: 
 #
-#	1.  Data processing: taking individual column vectors of the 
+#	1. Data processing: taking individual column vectors of the 
 #		dependenet and various independent variables, removing
 #		winter months and leap days, producing
 #		lagged covariates (i.e. of precip and lake level), 
