@@ -421,6 +421,8 @@ library(rvest) #To parse table from webpage
 #lake Mendota downloaded from 
 # https://waterdata.usgs.gov/nwis/dv/?site_no=05428000&agency_cd=USGS&amp;referred_module=sw
 #mendota_table=read.csv(file="mendota_example.csv")
+#Latest version of this for automated access: 
+#https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=05428000&startDT=1980-09-21&endDT=2023-09-21&parameterCd=00060,00065&siteStatus=all
 
 current_date = "2021-01-28"
 
