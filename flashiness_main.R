@@ -193,8 +193,8 @@ tcol=1
 rcol=2
 
 tot_days=abs(winter[1]-winter[2]) #Account for winter days removed
-win=10 #Window size
-pksyr=3 #Number of peaks per year to take. pksyr*win should be >=30
+win=5 #Window size
+pksyr=5 #Number of peaks per year to take. pksyr*win should be >=30
 
 #Fooding thresholds
 ep=c(0.999, 0.99,0.9) #1000, 100 and 10 year flood
@@ -244,6 +244,8 @@ for(n in 1:n_lakes){
 	mom2_dec_lake[[n]]=matrix(0,1, n_years-win)
 	mom3_dec_lake[[n]]=matrix(0,1, n_years-win)
 
+	#Note: in the structure of this variable, the rows correspond
+	#to each of the flood-type events (e.g. 1000 yr, 100 yr, and 10 yr)
 	exceed_dec_lake[[n]]=matrix(0,length(ep),ca)
 
 
@@ -271,49 +273,53 @@ for(n in 1:n_lakes){
 
 			fill_pos=fill_pos+1
 		 }
+		}
+
+		#Get certain stats on the top peaks per window. 
+		for (r in win:n_years) {
+		peaks_lake=NULL
+
+		#Take the top peaks in a window to create hybrid partial/annual series. 
+		for (p in 0:(win-1)){ 
+			peaks_lake=c(peaks_lake, pksyr_lake[[n]][,r-p])
+		}
+
+		#Calculate the moments
+		peaks_dec_lake[[n]][,r-win+1]=peaks_lake
+		mom1_dec_lake[[n]][r-win+1]=mean(peaks_lake,na.rm=T)
+		mom2_dec_lake[[n]][r-win+1]=var(peaks_lake,na.rm=T)
+		mom3_dec_lake[[n]][r-win+1]=mean(((peaks_lake-as.numeric(mom1_dec_lake[[n]][r-win+1]))/
+			(as.numeric(mom2_dec_lake[[n]][r-win+1]))^0.5)^3, na.rm=T)
+
+		}
+
+	#Now calculate the likelihood of seeing specific flood types
+	#These methods are adapted from the USGS (1984) "Guidelines
+	#for determining flood flow frequency."
+
+	for (d in 1:ca){
+		#chi^2 df based on calculated skew: 
+		c2df_lake=8/(mom3_dec_lake[[n]][d])^2
+		#Corresponding chi^2 statistic:
+		c2stat_lake=qchisq(ep,df=c2df_lake)
+		#The K coefficient used to calculate exceedance probability:
+		Ksp_lake=(c2stat_lake-c2df_lake)/sqrt(2*c2df_lake)
+
+		#Probability that a certain threshold is exceeded, Y=mean(Y)+K*sd(K)
+		exceed_dec_lake[[n]][,d]=mom1_dec_lake[[n]][d]+Ksp_lake*sqrt(mom2_dec_lake[[n]][d])
 	}
-
-	#Get certain stats on the top peaks per window. 
-	for (r in win:n_years) {
-	peaks_lake=NULL
-
-	#Take the top peaks in a window to create hybrid partial/annual series. 
-	for (p in 0:(win-1)){ 
-		peaks_lake=c(peaks_lake, pksyr_lake[[n]][,r-p])
-	}
-
-	peaks_dec_lake[[n]][,r-win+1]=peaks_lake
-	mom1_dec_lake[[n]][r-win+1]=mean(peaks_lake,na.rm=T)
-	mom2_dec_lake[[n]][r-win+1]=var(peaks_lake,na.rm=T)
-	mom3_dec_lake[[n]][r-win+1]=mean(((peaks_lake-as.numeric(mom1_dec_lake[[n]][r-win+1]))/
-		(as.numeric(mom2_dec_lake[[n]][r-win+1]))^0.5)^3, na.rm=T)
-
-	}
-
-#Now calculate the likelihood of seeing specific flood types
-#These methods are adapted from the USGS (1984) "Guidelines
-#for determining flood flow frequency."
-
-for (d in 1:ca){
-	#chi^2 df based on calculated skew: 
-	c2df_lake=8/(mom3_dec_lake[[n]][d])^2
-	#Corresponding chi^2 statistic:
-	c2stat_lake=qchisq(ep,df=c2df_lake)
-	#The K coefficient used to calculate exceedance probability:
-	Ksp_lake=(c2stat_lake-c2df_lake)/sqrt(2*c2df_lake)
-
-	#Probability that a certain threshold is exceeded, Y=mean(Y)+K*sd(K)
-	exceed_dec_lake[[n]][,d]=mom1_dec_lake[[n]][d]+Ksp_lake*sqrt(mom2_dec_lake[[n]][d])
 }
 
 ############PDF Output
 #pdf(file="mononaAmendota10winfld.pdf", height=6, width=6, onefile=TRUE, family='Helvetica', paper='letter', pointsize=12)
-
+upper_ci = exp(exceed_dec_lake[[n]][2,])+exp(sqrt(mom2_dec_lake[[n]][1:ca])/sqrt(pksyr*win))
+lower_ci = exp(exceed_dec_lake[[n]][2,])-exp(sqrt(mom2_dec_lake[[n]][1:ca])/sqrt(pksyr*win))
+ylims = c(min(lower_ci) -2, max(upper_ci) + 2)
 par(mfrow=c(1,1))
-plot(1:ca,exp(exceed_dec_lake[[n]][3,]), t="l", xlab="Time", ylab="10% threshold (ft.)",bty="l",xaxs="i", yaxs="i")
+plot(1:ca,exp(exceed_dec_lake[[n]][2,]), t="l",xlab="Time", ylim = ylims, ylab="10% threshold (ft.)",bty="l",xaxs="i", yaxs="i")
 #axis(side=1, labels=c("1920","1940","1960","1980","2000"), at=seq(5,82,17))
-lines(1:ca, exp(exceed_dec_lake[[n]][3,])+exp(sqrt(mom2_dec_lake[[n]][1:ca])/sqrt(30)),lty=3)
-lines(1:ca, exp(exceed_dec_lake[[n]][3,])-exp(sqrt(mom2_dec_lake[[n]][1:ca])/sqrt(30)),lty=3)
+lines(1:ca, upper_ci ,lty=3)
+lines(1:ca, lower_ci ,lty=3)
 
 
 #dev.off()
