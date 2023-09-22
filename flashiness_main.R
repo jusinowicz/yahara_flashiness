@@ -180,12 +180,12 @@ for(n in 1:n_lakes){
 
 ##############################################################
 # PART 3: Flooding series analysis
+##############################################################
 # This is based on classic flooding analysis, modified to 
 # account for the non-stationarity of lake-level over many
 # decades. We treat the variability in lake-level response 
-# with a moving 10-year (decadal) window.
+# with a moving (e.g. 10-year, decadal) window.
 ##############################################################
-
 #Set important variables: 
 #which column of data matrix has time index? 
 tcol=1
@@ -215,7 +215,8 @@ mom2_dec_lake = vector("list", n_lakes)
 #Skew of peak distribution  
 mom3_dec_lake = vector("list", n_lakes) 
 
-
+#The exceedence threshold: e.g. what constitutes a 
+#100 yr flooding event? 
 exceed_dec_lake = vector("list", n_lakes) 
 
 
@@ -305,7 +306,7 @@ for(n in 1:n_lakes){
 		#The K coefficient used to calculate exceedance probability:
 		Ksp_lake=(c2stat_lake-c2df_lake)/sqrt(2*c2df_lake)
 
-		#Probability that a certain threshold is exceeded, Y=mean(Y)+K*sd(K)
+		#The threshold at which each rare event is met/exceeded, Y=mean(Y)+K*sd(K)
 		exceed_dec_lake[[n]][,d]=mom1_dec_lake[[n]][d]+Ksp_lake*sqrt(mom2_dec_lake[[n]][d])
 	}
 }
@@ -321,7 +322,6 @@ plot(1:ca,exp(exceed_dec_lake[[n]][2,]), t="l",xlab="Time", ylim = ylims, ylab="
 lines(1:ca, upper_ci ,lty=3)
 lines(1:ca, lower_ci ,lty=3)
 
-
 #dev.off()
 
 ##############################################################
@@ -329,6 +329,30 @@ lines(1:ca, lower_ci ,lty=3)
 ##############################################################
 #Use the package mgcv by Simon Wood: 
 library(mgcv)
+	
+#If the fitted model is already known, then describe each model:
+model_form = vector("list", n_lakes)
+model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 50)"
+model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 50)+
+		s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+		s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
+		s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+		s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+		te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+		te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
+		te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 50)+
+		s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+		s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
+		s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+		s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+		te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+		te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
+		te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+#Store fitted models
+lake_models = vector("list", n_lakes)
 
 #Try to implement some parallelization for mgcv:
 
@@ -356,12 +380,12 @@ for(n in 1:n_lakes){
 
 	# New lake-level time series based on residuals
 	lake_new=as.matrix(lake_gfit1@residuals)
-	colnames(lake_new) = "level"
 	
 	# New time series after removing NAs in the rain
 	rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
 	lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
 	colnames(rn_new) = "rn"
+	colnames(lake_new) = "level"
 
 	#Combine all of the data, add the lagged data, and turn into ts
 	lake_r = make.flashiness.object( lake_new , rn_new, lags)
@@ -371,12 +395,6 @@ for(n in 1:n_lakes){
 	# Use bam() (instead of gam()) from mgcv because it is designed for 
 	# large data sets.
 
-	men.ar6.rn3.wrntm.wrn2 = bam (level ~ s(time, bs = "cr", k = 400) 
-		+s(level1,bs="cr",k=6)+s(level2,bs="cr",k=6)+s(level3,bs="cr",k=6)
-		+s(level4,bs="cr",k=6)+s(level5,bs="cr",k=6)+s(level6,bs="cr",k=6)
-		+s(rn,bs="cr",k=6)+s(rn1,bs="cr",k=6)
-		+s(rn2,bs="cr",k=6)+s(rn3,bs="cr",k=6)+s(rn4,bs="cr",k=6)
-		+te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)
-		+te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)
-		+te(rn1,rn2,k=20)+te(rn2,rn3,k=20), data=lake_r, cluster=cl)
+	lake_models[[n]] = bam ( as.formula((model_form [[n]] )), data=lake_r, cluster=cl )
+
 }
