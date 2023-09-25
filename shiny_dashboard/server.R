@@ -1,33 +1,44 @@
-function(input, output, session) {
+function(input, output) {
 
-  # pkgStream is a reactive expression that represents a stream of
-  # new package download data; up to once a second it may return a
-  # data frame of new downloads since the last update.
-  pkgStream <- packageStream(session)
+  #Check the historic data set and update it to include data up to 
+  #the present if it hasn't been been already.
+  updateHistoric()
 
-  # Max age of data (5 minutes)
-  maxAgeSecs <- 60 * 5
+  #Preallocate the important historical data tables 
+  lake_table = vector("list", n_lakes)
+  daily_precip = vector("list", n_lakes)
+  #Final data set
+  lake_data = vector("list", n_lakes)
 
-  # pkgData is a reactive expression that accumulates previous
-  # values of pkgStream, discarding any that are older than
-  # maxAgeSecs.
-  pkgData <- packageData(pkgStream, maxAgeSecs)
+  #Load the historic data sets
+  lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
+  lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
+  lake_table[[2]] = read.csv(file = "./../data/mon_hist.csv")
+  lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
+  daily_precip[[1]] = read.csv(file = "./../data/rain_hist.csv")
+  daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
+  daily_precip[[2]] = daily_precip[[1]]
 
-  # dlCount is a reactive expression that keeps track of the total
-  # number of rows that have ever appeared through pkgStream.
-  dlCount <- downloadCount(pkgStream)
+  for (n in 1: n_lakes){
+    lake_data[[n]] = lake_table[[n]] %>%
+          inner_join(daily_precip[[n]], by = "time" ) 
+  }
 
-  # usrCount is a reactive expression that keeps an approximate
-  # count of all of the unique users that have been seen since the
-  # app started.
-  usrCount <- userCount(pkgStream)
+  #Get the rain forecast:
+  fut_precip = as.data.frame(weather_forecast(location =  
+    c(43.0930, -89.3727), daily="precipitation_sum") )
+  colnames(fut_precip) = c("time", "rain")
 
-  # Record the time that the session started.
-  startTime <- as.numeric(Sys.time())
+  #Section 1: Value Boxes
+   
+  #The maximum rainfall in the upcoming days   
+  output$max_rain = max(fut_precip$rain)
 
-  output$rate <- renderValueBox({
-    # The downloadRate is the number of rows in pkgData since
-    # either startTime or maxAgeSecs ago, whichever is later.
+
+
+
+  output$max_rain <- renderValueBox({
+    # max_rain is the highest forecast rainfall for a single day
     elapsed <- as.numeric(Sys.time()) - startTime
     downloadRate <- nrow(pkgData()) / min(maxAgeSecs, elapsed)
 
