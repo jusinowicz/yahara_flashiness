@@ -1,5 +1,9 @@
 function(input, output) {
 
+
+  ##############################################################
+  #PART 1: Data processing
+  ##############################################################
   #Check the historic data set and update it to include data up to 
   #the present if it hasn't been been already.
   updateHistoric()
@@ -19,9 +23,30 @@ function(input, output) {
   daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
   daily_precip[[2]] = daily_precip[[1]]
 
+  #Final processing steps of the raw data
   for (n in 1: n_lakes){
+
+    #Join the lake and rain data to match up dates
     lake_data[[n]] = lake_table[[n]] %>%
-          inner_join(daily_precip[[n]], by = "time" ) 
+          inner_join(daily_precip[[n]], by = "time" )
+
+    #Truncate the data set so that we only have from real_start
+    #onwards. 
+    lake_data[[n]] = lake_data[[n]][lake_data[[n]][,"time"] 
+                      >= real_start[[n]], ]
+
+    #Do some processing to remove ice-on days (approximately). This 
+    #function automatically removes winter days and converts data 
+    #table to a timeseries (ts) object 
+    lake.tmp = remove.days(lake_data[[n]]$level, year(real_start[[n]] ) )
+    colnames(lake.tmp) = "level"
+    rn.tmp = remove.days(lake_data[[n]]$rn, year(real_start[[n]] ) )
+    colnames(rn.tmp) = "rn"
+
+    #This final step creates the full data object, with lags of 
+    #lake level for autocorrelation and lags of rain for delayed
+    #rain input. 
+    lake_data[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
   }
 
   #Get the rain forecast:
@@ -29,14 +54,20 @@ function(input, output) {
     c(43.0930, -89.3727), daily="precipitation_sum") )
   colnames(fut_precip) = c("time", "rain")
 
+  ##############################################################
+  #PART 2: Forecasting
+  ##############################################################
+  
+
+  ##############################################################
   #Section 1: Value Boxes
-   
+  ##############################################################
+ 
   #The maximum rainfall in the upcoming days   
   output$max_rain = max(fut_precip$rain)
 
 
-
-
+  #Section 2: Forecast
   output$max_rain <- renderValueBox({
     # max_rain is the highest forecast rainfall for a single day
     elapsed <- as.numeric(Sys.time()) - startTime

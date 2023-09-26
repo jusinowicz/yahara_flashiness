@@ -3,6 +3,8 @@ library(tidyverse)
 library(lubridate)
 library(nasapower) #API for NASA data, for precipitation
 library(openmeteo)
+source("./../functions/flash_functions.R")
+
 
 #USGS site keys. Currently includes Mendota and Monona
 site_keys = c("05428000", "05429000")
@@ -13,6 +15,9 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 
 #Parameters from the NASA POWER data collection
 nasa_pars = c("PRECTOTCORR")
+
+#Where the historical data should start
+real_start = list( ymd("1980-1-1"), ymd("1980-1-1"))
 
 #This is a helper function for lake level. If the data is not up to date, do
 #all of the necessary data procesing. 
@@ -67,10 +72,10 @@ updateHistoric = function( ) {
   #Preallocate the important historical data tables 
   lake_table = vector("list", n_lakes)
   daily_precip = vector("list", n_lakes)
-  real_start = vector("list", n_lakes)
   #Final data set
   lake_data = vector("list", n_lakes)
 
+  #Last dates that appear in the data sets
   last_date = vector("list",n_lakes)
   last_rain = vector("list",n_lakes)
 
