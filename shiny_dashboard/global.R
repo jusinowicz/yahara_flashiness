@@ -1,8 +1,13 @@
 library(shiny)
 library(tidyverse)
 library(lubridate)
+#Data processing
 library(nasapower) #API for NASA data, for precipitation
 library(openmeteo)
+#Stats
+library(mgcv)
+library(fGarch) #For GARCH models
+#misc data processing and stats
 source("./../functions/flash_functions.R")
 
 
@@ -18,6 +23,30 @@ nasa_pars = c("PRECTOTCORR")
 
 #Where the historical data should start
 real_start = list( ymd("1980-1-1"), ymd("1980-1-1"))
+
+#Max lags in rain and lake-level data
+lags = 10
+
+#If the fitted GAM model is already known, then describe each model:
+model_form = vector("list", n_lakes)
+#model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)"
+model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
+    s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+    te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
+    te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
+    s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+    te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
+    te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 #This is a helper function for lake level. If the data is not up to date, do
 #all of the necessary data procesing. 
@@ -67,7 +96,7 @@ updateRain = function (daily_rain, start_date, current_date) {
 
 
 # Load the historical data and check whether it is up to date. 
-updateHistoric = function( ) {
+updateHistoric = function() {
 
   #Preallocate the important historical data tables 
   lake_table = vector("list", n_lakes)
@@ -130,6 +159,54 @@ updateHistoric = function( ) {
 
 }
 
+
+updateModel = function (lake_data, model_form){
+
+  #First check to see if the fitted models already exist. If they don't, 
+  #run the code to fit the models. This is time consuming! 
+  #The standard I have chosen to employ is to name stored fitted models 
+  #with suffix ".var"
+  model_files = list.files("./")
+  model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
+
+  #Test if there is a model for each lake
+  if(  sum(model_true) >= n_lakes ){   
+    
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      load(paste(model_files[n]) )
+    }
+  
+  }else{ 
+
+    #We have to fit the models. Use this function:
+    new_models = fitGAM(lake_data, model_form)
+    
+    #Because these are so large when saved as a variable,
+    #we don't save the variables but use the Lp matrix
+    #and model coefficients to represent the model and 
+    #make future predictions
+    #model_saves = c("mendotaGAM1.var","mononaGAM1.var")
+    #for(n in 1:n_lakes){ mod.tmp = new_models[[n]]; 
+    #         saveRDS(mod.tmp,file = paste(model_saves[[n]]) )} 
+
+    #These are the two model compenents we'll save: 
+    models_Xp = vector("list", n_lakes)
+    models_coef = vector("list", n_lakes)
+
+    for (n in 1:n_lakes){ 
+      models_Xp[[n]] = predict(new_models[[n]],lake_data[[n]],type="lpmatrix" )
+      models_coef[[n]] = coef(new_models[[n]])
+    }
+
+    save(file = "lakeGAMsLpB.var", models_Xp, models_coef )
+
+  }
+
+}
 
 
 # An empty prototype of the data frame we want to create

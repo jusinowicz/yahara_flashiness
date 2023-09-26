@@ -23,7 +23,8 @@ function(input, output) {
   daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
   daily_precip[[2]] = daily_precip[[1]]
 
-  #Final processing steps of the raw data
+  #Final processing steps of the raw data which joins lake
+  #and precip and truncates to desired start date. 
   for (n in 1: n_lakes){
 
     #Join the lake and rain data to match up dates
@@ -49,6 +50,10 @@ function(input, output) {
     lake_data[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
   }
 
+  #Check to see if the GAMs have already been fitted and saved in 
+  #a *.var file, or if we need to fit them. 
+  updateModel(lake_data)
+
   #Get the rain forecast:
   fut_precip = as.data.frame(weather_forecast(location =  
     c(43.0930, -89.3727), daily="precipitation_sum") )
@@ -57,11 +62,13 @@ function(input, output) {
   ##############################################################
   #PART 2: Forecasting
   ##############################################################
-  
+
 
   ##############################################################
-  #Section 1: Value Boxes
+  #PART 3: Build out the UI
   ##############################################################
+
+  #Section 1: Value Boxes
  
   #The maximum rainfall in the upcoming days   
   output$max_rain = max(fut_precip$rain)

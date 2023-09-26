@@ -12,9 +12,14 @@
 # (reference here)
 #
 #See Usinowicz et al. 2016 for more motivation and background 
-#on this work. 
+#on this work.
+library(shiny)
+library(tidyverse)
+library(lubridate)
+library(mgcv)
+library(fGarch) #For GARCH models
 
-#########
+##############################################################
 # Data processing function 1: Remove winter and leap days from
 # a dataset with 365 daily values and make it a timeseries variable
 # that, importantly, is also a matrix. 
@@ -81,26 +86,26 @@ remove.days=function(variable1, date.start, w.yes=TRUE, winter=c(334,120)  ){
  }
 
 
-#########
+##############################################################
 # Data processing function 2: Combine all variables into a single
 # dataset, including those generated as lags of a particular
 # variable (e.g. precipitation or lake level), and return a data frame. 
 #
-#		response 	The variable that will be the response, i.e. lake
-#				 	lake-level. 
-#		lagged_covar Variables that will be lagged, usually just precipitation.
-#		lags 		The number of lags for each lagged variable. The 
-#					number of entries needs to match the number of columns
-#					in lagged_covar. 
-#		covar 		Additional covariates that will not be lagged. E.g.
-#			 		impervious surface area. 
-#		auto 		By default, this function will test the autoregression in
-#					in the response and determined the appropriate number of 
-#					lags. Setting this to false requires the user to input the 
-#					autoregressive order. The ar(p) order determines the number 
-#					of lags of the response to add to the final data object. 
-#		orders		The order of the ar(p) model, which determines the number of 
-#				 	lags of the response to add to the final data object.
+# response 	The variable that will be the response, i.e. lake
+#			lake-level. 
+# lagged_covar Variables that will be lagged, usually just precipitation.
+# lags 		The number of lags for each lagged variable. The 
+#			number of entries needs to match the number of columns
+#			in lagged_covar. 
+# covar     Additional covariates that will not be lagged. E.g.
+#			impervious surface area. 
+# auto 		By default, this function will test the autoregression in
+#			in the response and determined the appropriate number of 
+#			lags. Setting this to false requires the user to input the 
+#			autoregressive order. The ar(p) order determines the number 
+#			of lags of the response to add to the final data object. 
+# orders	The order of the ar(p) model, which determines the number of 
+#			lags of the response to add to the final data object.
 #
 
 make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, auto=TRUE, orders=NULL) {
@@ -180,9 +185,57 @@ make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, aut
 	return( as.data.frame(full.tmp))
 }
 
+##############################################################
+# Wrap the model fitting in a function that can be called
+# by global.R and server.R
+##############################################################
+fitGAM = function( lake_data, model_form){ 
 
-####### Function to get the names of smooth variables from an mgcv GAM object
-#
+	n_lakes = length(model_form)
+	#Store fitted models
+	lake_models = vector("list", n_lakes)
+
+
+	#Loop over lakes and fit models. Assuming that best-fit models have 
+	#already been determined by AIC and GCV. 
+	for(n in 1:n_lakes){ 
+
+		# Use the residuals from the GARCH model so that the trends in variance are
+		# removed. Note, this version only fits the GARCH part because the AR will be
+		# fit by the GAM: 
+
+		lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
+					 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
+
+		# New lake-level time series based on residuals
+		lake_new=as.matrix(lake_gfit1@residuals)
+		
+		# New time series after removing NAs in the rain
+		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
+		lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
+		colnames(rn_new) = "rn"
+		colnames(lake_new) = "level"
+
+		#Combine all of the data, add the lagged data, and turn into ts
+		lake_r = make.flashiness.object( lake_new , rn_new, lags)
+
+		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
+		# Those are what are fit here.
+		# Use bam() (instead of gam()) from mgcv because it is designed for 
+		# large data sets.
+
+		lake_models[[n]] = bam ( as.formula((model_form [[n]] )), data=lake_r)
+
+	}
+
+	return(lake_models)
+
+}
+
+
+##############################################################
+# Get the names of smooth variables from an mgcv GAM object
+##############################################################
 get.var.names = function (gam.model){ 
 
 no.sm.vars=length(gam.model$smooth)
@@ -193,9 +246,9 @@ for (a in 1:no.sm.vars){
 return (names.list)
 
 }
-
-
-####### Function for GAM prediction with autoregression
+##############################################################
+# GAM prediction with autoregression
+#
 # mgcv provides functions for predicting values with a fitted model,
 # but none of which are designed to work with autoregressive terms.
 # This function is designed to use the existing predict.gam in a stepwise
@@ -248,7 +301,9 @@ model.sim.ret=list(model.sim, model.sim.lp)
 return(model.sim.ret)
 }
 
-#######Function to calculate proportionate variance from covariates
+##############################################################
+#Calculate proportionate variance from covariates
+# 
 # Each covariate or group of covariates in a linear model can be 
 # be viewed as either amplifying (>1) or damping (<1) fluctuations in the response
 # variable due to being multiplicative constants. This function uses that
