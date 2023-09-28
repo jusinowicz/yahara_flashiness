@@ -10,7 +10,9 @@ library(fGarch) #For GARCH models
 #misc data processing and stats
 source("./../functions/flash_functions.R")
 
-
+##############################################################
+#Global variables
+##############################################################
 #USGS site keys. Currently includes Mendota and Monona
 site_keys = c("05428000", "05429000")
 n_lakes = length(site_keys)
@@ -23,6 +25,9 @@ nasa_pars = c("PRECTOTCORR")
 
 #Where the historical data should start
 real_start = list( ymd("1980-1-1"), ymd("1980-1-1"))
+
+#Where the lake stage and rain data live: 
+lake_data = vector("list", n_lakes)
 
 #Max lags in rain and lake-level data
 lags = 10
@@ -47,6 +52,11 @@ model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+
+##############################################################
+#Global functions 
+##############################################################
 
 #This is a helper function for lake level. If the data is not up to date, do
 #all of the necessary data procesing. 
@@ -101,8 +111,6 @@ updateHistoric = function() {
   #Preallocate the important historical data tables 
   lake_table = vector("list", n_lakes)
   daily_precip = vector("list", n_lakes)
-  #Final data set
-  lake_data = vector("list", n_lakes)
 
   #Last dates that appear in the data sets
   last_date = vector("list",n_lakes)
@@ -196,17 +204,78 @@ updateModel = function (lake_data, model_form){
     #These are the two model compenents we'll save: 
     models_Xp = vector("list", n_lakes)
     models_coef = vector("list", n_lakes)
+    models_Vp[[n]] = vector("list", n_lakes)
 
     for (n in 1:n_lakes){ 
+      #Model Lp matrix
       models_Xp[[n]] = predict(new_models[[n]],lake_data[[n]],type="lpmatrix" )
+      #Model coefficients
       models_coef[[n]] = coef(new_models[[n]])
+      #Variance matrix
+      models_Vp[[n]] = new_models[[n]]$Vp
     }
 
-    save(file = "lakeGAMsLpB.var", models_Xp, models_coef )
+    save(file = "lakeGAMsLpB.var", models_Xp, models_coef, models_Vp )
 
   }
 
 }
+
+
+ predictFlashGAM = function(fut_precip){
+
+    #Where the fitted model coefficients and Lp matrix live
+    load(file = "lakeGAMsLpB.var" )
+
+    #This section will break down the formula and extract two 
+    #key pieces of info: the number of smooth terms and the 
+    #number of knots for each 
+    model_clean = vector("character",n_lakes)
+    model_ks = vector("list",n_lakes)
+    
+    for (n in 1:n_lakes){ 
+      #Clear out all spaces
+      model_clean[n] = str_replace_all(model_form[[n]], fixed(" "), "")
+      #Split by each occurence of k, get the next 5 characters, match any 
+      #digits 0-9 and make numeric.
+      model_ks[[n]] = model_clean[n] %>% 
+                  str_split("k") %>%
+                  unlist() %>%
+                  str_sub(1,5) %>%
+                  str_match_all("[0-9]+") %>%
+                  unlist() %>%
+                  as.numeric()
+    }
+
+    n_smooth = length(model_ks[[n]])
+
+    #Find the average distance between samples:
+    ldiffs = apply(lake_data[[n]],2,diff)  
+    m_ldiff = apply(abs(ldiffs), 2, mean,na.rm=T) 
+    
+    #Loop through smooth terms:
+    for ( j in 0:(n_smooth-1) ) {
+      dx = m_ldiff[j]
+      #Get the set of columns for the smooth
+      lcols = 1+j*(model_ks[[n]][j+1]-1) + 1:(model_ks[[n]][j+1]-1)
+      #Find the relevant rows
+      lrows = floor(fp_table[j+1]/dx) 
+      w1 = (fp_table[j+1]-i*dx)/dx ## interpolation weights
+      ## find approx. predict matrix row portion, by interpolation
+      x0 = c(x0,Xp[lrows+2,lcols]*w1 + Xp[lrows+1,lcols]*(1-w1))
+    }
+
+    dim(x0)=c(1,dim(Xp)[2]) 
+    fv = x0%*%coef(b) + xn[4]    ## evaluate and add offset
+    se = sqrt(x0%*%b$Vp%*%t(x0)) ## get standard error
+    ## compare to normal prediction
+    predict(b,newdata=data.frame(x0=xn[1],x1=xn[2],
+            x2=xn[3],x3=xn[4]),se=TRUE)
+
+
+
+ }
+
 
 
 # An empty prototype of the data frame we want to create

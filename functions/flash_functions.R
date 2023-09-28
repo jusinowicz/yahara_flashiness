@@ -117,13 +117,14 @@ make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, aut
 	}
 
 	if( is.null(dim(response)) | is.null(dim(lagged_covar))) {
-		stop ("Make sure the response and all covariates are at least column vectors (remove.days() will do this automatically).")}
+		stop ("Make sure the response and all covariates are at least 
+			column vectors (remove.days() will do this automatically).")}
 		
-		names.list = c( colnames(response), colnames(lagged_covar),colnames(covar))
+	names.list = c( colnames(response), colnames(lagged_covar),colnames(covar))
 		
-		#Decide how many lags of the response variable. This can 
-		#be determined automatically by testing for autoregression.
-		if ( auto == TRUE) { 
+	#Decide how many lags of the response variable. This can 
+	#be determined automatically by testing for autoregression.
+	if ( auto == TRUE) { 
 
 			ar.tmp = ar(response,na.action=na.exclude)
 			r.lags = ar.tmp$order
@@ -131,7 +132,7 @@ make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, aut
 		} else { 
 
 			r.lags = orders
-		}	
+	}	
 		
 		#Make the matrix of lagged responses
 		r.names = names.list[1]
@@ -139,9 +140,10 @@ make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, aut
 		if (r.lags>0){ 
 			for (rl in 1:r.lags) { 
 				#Create the lagged matrix and pad with NAs
-				lag.r =as.matrix( c(r.cols[(rl+1):length(response)],matrix(NA, rl,1)))
+				lag.r =lag(as.data.frame(response),rl)  
 				r.cols = cbind(r.cols, lag.r )  
-				r.names = c(r.names, paste(names.list[1],rl,sep="")) }
+				r.names = c(r.names, paste(names.list[1],rl,sep="")) 
+			}
 		}
 		colnames(r.cols)=r.names
 
@@ -164,14 +166,14 @@ make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, aut
 
 					#Make the lagged covariates
 					for (nl in 1:n.lags) {
-					lag.c =as.matrix( c(lc.cols[(nl+1):length(response)],matrix(NA, nl,1)))
+					lag.c = lag(as.data.frame(lagged_covar[,nc]),nl) 
 					lc.cols = cbind(lc.cols,lag.c)	
 					col.names = c(col.names, paste(names.list[(nc+1)],nl,sep=""))
 					}
 				
 				} 
 				colnames(lc.cols) = col.names
-				all.lc.cols = cbind(all.lc.cols,lc.cols)
+				all.lc.cols = cbind(all.lc.cols,as.matrix(lc.cols) )
 			}
 		
 		} else { 	
@@ -194,7 +196,6 @@ fitGAM = function( lake_data, model_form){
 	n_lakes = length(model_form)
 	#Store fitted models
 	lake_models = vector("list", n_lakes)
-
 
 	#Loop over lakes and fit models. Assuming that best-fit models have 
 	#already been determined by AIC and GCV. 
