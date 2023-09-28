@@ -181,7 +181,8 @@ make.flashiness.object = function (response, lagged_covar, lags, covar=NULL, aut
 		}
 
 		#Make the full matrix
-		full.tmp = cbind(1:(dim(all.lc.cols)[1]), r.cols,all.lc.cols,covar)
+		full.tmp = cbind(1:(dim(all.lc.cols)[1]), as.matrix(r.cols),
+			as.matrix(all.lc.cols),covar )
 		colnames(full.tmp)=c("time", colnames(r.cols),colnames(all.lc.cols),colnames(covar))
 
 	return( as.data.frame(full.tmp))

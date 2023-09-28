@@ -37,7 +37,7 @@ model_form = vector("list", n_lakes)
 #model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)"
 model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-    s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
+    s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+
     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
@@ -227,12 +227,21 @@ updateModel = function (lake_data, model_form){
     #Where the fitted model coefficients and Lp matrix live
     load(file = "lakeGAMsLpB.var" )
 
+    #How many days are we forecasting? 
+    n_days = dim (fut_precip)[2]
+
+
+
     #This section will break down the formula and extract two 
     #key pieces of info: the number of smooth terms and the 
     #number of knots for each 
     model_clean = vector("character",n_lakes)
     model_ks = vector("list",n_lakes)
+
+    ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
     
+    fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
+
     for (n in 1:n_lakes){ 
       #Clear out all spaces
       model_clean[n] = str_replace_all(model_form[[n]], fixed(" "), "")
