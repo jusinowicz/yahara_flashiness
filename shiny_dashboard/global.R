@@ -53,6 +53,13 @@ model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
+model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+    s(rn,bs=\"cr\",k=6)+ ti(rn,time,k=20)"
+
+model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
+    s(rn,bs=\"cr\",k=6) + ti(rn,time,k=20)"
+
+
 
 ##############################################################
 #Global functions 
@@ -204,7 +211,7 @@ updateModel = function (lake_data, model_form){
     #These are the two model compenents we'll save: 
     models_Xp = vector("list", n_lakes)
     models_coef = vector("list", n_lakes)
-    models_Vp[[n]] = vector("list", n_lakes)
+    models_Vp = vector("list", n_lakes)
 
     for (n in 1:n_lakes){ 
       #Model Lp matrix
@@ -222,15 +229,16 @@ updateModel = function (lake_data, model_form){
 }
 
 
- predictFlashGAM = function(fut_precip){
+ predictFlashGAM = function(lake_data, fut_precip){
 
     #Where the fitted model coefficients and Lp matrix live
     load(file = "lakeGAMsLpB.var" )
 
     #How many days are we forecasting? 
-    n_days = dim (fut_precip)[2]
+    n_days = dim(fut_precip)[2]
 
-
+    #Most current time step
+    ntime = dim(lake_data[[1]])[1]
 
     #This section will break down the formula and extract two 
     #key pieces of info: the number of smooth terms and the 
@@ -238,11 +246,30 @@ updateModel = function (lake_data, model_form){
     model_clean = vector("character",n_lakes)
     model_ks = vector("list",n_lakes)
 
-    ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
+    #a1 = ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
     
-    fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
+    # fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
 
     for (n in 1:n_lakes){ 
+
+      #AR order of rain and lake level
+      ar_lake = grep("level", (colnames(lake_data[[n]])))
+      ar_lake = ar_lake[-1]
+      ar_rain = grep("rn", (colnames(lake_data[[n]]))) 
+      ar_rain = ar_rain[-1]
+      l_arl = length (ar_lake)
+      l_arr = length (ar_rain)
+
+      #Which AR is larger? 
+      if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
+      
+      #Get the last section of data table for lags
+      lt = tail(lake_data[[n]], l_arr)
+ 
+      #The new data set for prediction
+      lt_new = t(as.matrix(c(ndays+1, tail(lt,l_arl)$level, fut_precip[1,"rain"], lt$rn[2:lags] ) ))
+
+      #Figure out the smooth terms 
       #Clear out all spaces
       model_clean[n] = str_replace_all(model_form[[n]], fixed(" "), "")
       #Split by each occurence of k, get the next 5 characters, match any 
@@ -254,37 +281,39 @@ updateModel = function (lake_data, model_form){
                   str_match_all("[0-9]+") %>%
                   unlist() %>%
                   as.numeric()
-    }
 
-    n_smooth = length(model_ks[[n]])
+      n_smooth = length(model_ks[[n]])
 
-    #Find the average distance between samples:
-    ldiffs = apply(lake_data[[n]],2,diff)  
-    m_ldiff = apply(abs(ldiffs), 2, mean,na.rm=T) 
-    
-    #Loop through smooth terms:
-    for ( j in 0:(n_smooth-1) ) {
-      dx = m_ldiff[j]
-      #Get the set of columns for the smooth
-      lcols = 1+j*(model_ks[[n]][j+1]-1) + 1:(model_ks[[n]][j+1]-1)
-      #Find the relevant rows
-      lrows = floor(fp_table[j+1]/dx) 
-      w1 = (fp_table[j+1]-i*dx)/dx ## interpolation weights
-      ## find approx. predict matrix row portion, by interpolation
-      x0 = c(x0,Xp[lrows+2,lcols]*w1 + Xp[lrows+1,lcols]*(1-w1))
-    }
+      #Find the average distance between samples:
+      ldiffs = apply(lake_data[[n]],2,diff)  
+      m_ldiff = apply(abs(ldiffs), 2, mean,na.rm=T) 
+      
+      #Do each time-step sequentially: 
+      for (f in 1:n_days){
 
-    dim(x0)=c(1,dim(Xp)[2]) 
-    fv = x0%*%coef(b) + xn[4]    ## evaluate and add offset
-    se = sqrt(x0%*%b$Vp%*%t(x0)) ## get standard error
-    ## compare to normal prediction
-    predict(b,newdata=data.frame(x0=xn[1],x1=xn[2],
-            x2=xn[3],x3=xn[4]),se=TRUE)
+        #Loop through smooth terms:
+        for ( j in 0:(n_smooth-1) ) {
+          dx = m_ldiff[j]
+          #Get the set of columns for the smooth
+          lcols = 1+j*(model_ks[[n]][j+1]-1) + 1:(model_ks[[n]][j+1]-1)
+          #Find the relevant rows
+          lrows = floor(lt_new[j+1]/dx) 
+          w1 = (lt_new[j+1]-i*dx)/dx ## interpolation weights
+          ## find approx. predict matrix row portion, by interpolation
+          x0 = c(x0,Xp[lrows+2,lcols]*w1 + Xp[lrows+1,lcols]*(1-w1))
+        }
+
+        dim(x0)=c(1,dim(Xp)[2]) 
+        fv = x0%*%coef(b) + xn[4]    ## evaluate and add offset
+        se = sqrt(x0%*%b$Vp%*%t(x0)) ## get standard error
+        ## compare to normal prediction
+        predict(b,newdata=data.frame(x0=xn[1],x1=xn[2],
+                x2=xn[3],x3=xn[4]),se=TRUE)
 
 
 
- }
-
+   }
+}
 
 
 # An empty prototype of the data frame we want to create

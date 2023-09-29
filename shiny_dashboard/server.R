@@ -50,19 +50,22 @@ function(input, output) {
     lake_data[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
   }
 
-  #Check to see if the GAMs have already been fitted and saved in 
-  #a *.var file, or if we need to fit them. 
-  updateModel(lake_data)
-
-  #Get the rain forecast:
+  #Get the rain forecast data:
   fut_precip = as.data.frame(weather_forecast(location =  
     c(43.0930, -89.3727), daily="precipitation_sum") )
   colnames(fut_precip) = c("time", "rain")
 
+
+
   ##############################################################
   #PART 2: Forecasting
   ##############################################################
+  #Check to see if the GAMs have already been fitted and saved in 
+  #a *.var file, or if we need to fit them. 
+  updateModel(lake_data)
 
+  #Predict the future lake-level response from the saved GAMs
+  predictFlashGAM(lake_data, fut_precip)
 
   ##############################################################
   #PART 3: Build out the UI

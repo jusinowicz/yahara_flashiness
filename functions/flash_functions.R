@@ -234,6 +234,60 @@ fitGAM = function( lake_data, model_form){
 
 }
 
+##############################################################
+# Wrap the model fitting in a function that can be called
+# by global.R and server.R. This version uses GAMM to fit 
+# the AR correlation structure
+##############################################################
+fitGAM_ar = function( lake_data, model_form){ 
+
+	n_lakes = length(model_form)
+	#Store fitted models
+	lake_models = vector("list", n_lakes)
+
+	#Loop over lakes and fit models. Assuming that best-fit models have 
+	#already been determined by AIC and GCV. 
+	for(n in 1:n_lakes){ 
+
+		# Use the residuals from the GARCH model so that the trends in variance are
+		# removed. Note, this version only fits the GARCH part because the AR will be
+		# fit by the GAM: 
+
+		lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
+					 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
+
+		# New lake-level time series based on residuals
+		lake_new=as.matrix(lake_gfit1@residuals)
+		
+		#Get the AR order: 
+		ar_ord = ar(lake_gfit1@residuals)$order
+
+		#Append this to the model description: 
+		mf = paste(model_form[[n]], ", correlation = corARMA(value = 
+			phi, fixed =TRUE, form = ~ 1 | time, p =", ar_ord, ")")
+
+		# New time series after removing NAs in the rain
+		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
+		lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
+		colnames(rn_new) = "rn"
+		colnames(lake_new) = "level"
+
+		#Combine all of the data, add the lagged data, and turn into ts
+		lake_r = make.flashiness.object( lake_new , rn_new, lags)
+
+		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
+		# Those are what are fit here.
+		# Use bam() (instead of gam()) from mgcv because it is designed for 
+		# large data sets.
+
+		lake_models[[n]] = gamm ( as.formula(mf), data=lake_r)
+
+	}
+
+	return(lake_models)
+
+}
+
 
 ##############################################################
 # Get the names of smooth variables from an mgcv GAM object
