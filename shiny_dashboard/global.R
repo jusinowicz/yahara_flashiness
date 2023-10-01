@@ -53,11 +53,18 @@ model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
-model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
-    s(rn,bs=\"cr\",k=6)+ ti(rn,time,k=20)"
+# model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(rn,bs=\"cr\",k=6)+ s(rn2,bs=\"cr\",k=6)+ ti(rn,time,k=20)+ ti(rn2,time,k=20)"
 
-model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
-    s(rn,bs=\"cr\",k=6) + ti(rn,time,k=20)"
+# model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(rn,bs=\"cr\",k=6)+ ti(rn,time,k=20)"
+
+# model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(rn,bs=\"cr\",k=6)+s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+ 
+#     ti(rn,time,k=20)+ti(rn2,time,k=20)+ti(rn3,time,k=20)"
+
+# model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(rn,bs=\"cr\",k=6) + ti(rn,time,k=20)"
 
 
 

@@ -261,6 +261,7 @@ fitGAM_ar = function( lake_data, model_form){
 		
 		#Get the AR order: 
 		ar_ord = ar(lake_gfit1@residuals)$order
+		#phi = unname(intervals(m$lme, which = "var-cov")$corStruct[, 2])
 
 		#Append this to the model description: 
 		mf = paste(model_form[[n]], ", correlation = corARMA(value = 
@@ -280,7 +281,12 @@ fitGAM_ar = function( lake_data, model_form){
 		# Use bam() (instead of gam()) from mgcv because it is designed for 
 		# large data sets.
 
-		lake_models[[n]] = gamm ( as.formula(mf), data=lake_r)
+		# lake_models[[n]] = bam( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
+		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+
+		lake_models3 [[n]] = bam( as.formula(model_form[[n]]), method = "REML",
+		 data=lake_r )
+
 
 	}
 
