@@ -22,6 +22,7 @@ library(tidyverse)
 library(lubridate)
 library(rvest) #To parse table from webpage
 library(nasapower) #API for NASA data, for precipitation
+source("./functions/flash_functions.R")
 ##############################################################
 #Key user-defined variables
 ##############################################################
@@ -325,7 +326,7 @@ lines(1:ca, lower_ci ,lty=3)
 #dev.off()
 
 ##############################################################
-#PART 3: Fitting GAMs
+#PART 4: Fitting GAMs
 ##############################################################
 #Use the package mgcv by Simon Wood: 
 library(mgcv)
@@ -353,19 +354,6 @@ model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 50)+
 
 #Store fitted models
 lake_models = vector("list", n_lakes)
-
-#Try to implement some parallelization for mgcv:
-
-require(parallel)  
-nc = detectCores()   ## cluster size, set for example portability
-if (detectCores()>1) { ## no point otherwise
-  cl = makeCluster(nc) 
-  ## could also use makeForkCluster, but read warnings first!
-} else cl <- NULL
-
-# The cluster will then be passed to gam fitting function below through
-# the variable cl.
-
 
 #Loop over lakes and fit models. Assuming that best-fit models have 
 #already been determined by AIC and GCV. 
