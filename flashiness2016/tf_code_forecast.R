@@ -28,10 +28,14 @@ library(nasapower) #API for NASA data, for precipitation
 library(GGally)
 source("./functions/flash_functions.R")
 #For tensorflow:
-library(tensorflow)
 library(keras)
 library(tidymodels)
 library(recipes)
+#Note:ignore the instructions to load "tensorflow" directly
+#Install should happen via: 
+#	install.packages("keras")
+#	library(keras)
+#	install_keras()
 ##############################################################
 #Key user-defined variables
 ##############################################################
@@ -137,18 +141,26 @@ for(n in 1:n_lakes){
 #Store fitted models
 lake_models = vector("list", n_lakes)
 
-#If the fitted GAM model is already known, then describe each model:
-model_form = vector("list", n_lakes)
-
-model_form [[1]] = "level ~."
-model_form [[2]] = "level ~."
-
-#Prediction and MSE 
+#Performance and prediction 
+pred_train = vector("list", n_lakes)
 pred_test = vector("list", n_lakes)
 
+#This function is for tensorflow to create a DNN. This is 
+#analogous to the "model form"  
+build_and_compile_model = function(norm) {
+  model = keras_model_sequential() %>%
+    norm() %>%
+    layer_dense(64, activation = 'relu') %>%
+    layer_dense(64, activation = 'relu') %>%
+    layer_dense(1)
 
-#Loop over lakes and fit models. 
-#The RF models will primarily pick up on AR when it is present so remove this.
+  model %>% compile(
+    loss = 'mean_absolute_error',
+    optimizer = optimizer_adam(0.001)
+  )
+
+  model
+}
 
 for(n in 1:n_lakes){ 
 
@@ -162,6 +174,7 @@ for(n in 1:n_lakes){
 	# New lake-level time series based on residuals
 	lake_new=as.matrix(lake_gfit1@residuals)
 
+	#The ML models will primarily pick up on AR when it is present so remove this.
 	#New lake-level time series based on AR residuals
 	lake_new = as.matrix(ar(lake_new)$resid)
 
@@ -188,36 +201,83 @@ for(n in 1:n_lakes){
 	test_l = select(test, level)
 
 	#Normalize the data:
+	#(This is an alternative approach to using MinMaxScaler with 
+	#fit_transform and transform)
 	normalizer = layer_normalization (axis = -1L)
+	adapt(normalizer, as.matrix(train_f))
 
-	#Tuning the model: 
-	t = tuneRF(train[,-5], train[,5],
-       stepFactor = 0.5,
-       plot = TRUE,
-       ntreeTry = 150,
-       trace = TRUE,
-       improve = 0.05)
+	#Build the model
+	lake_models[[n]]  = build_and_compile_model(normalizer)
+	#summary(dnn_model)
 
-	#Get mtry with the lowest OOB Error
-	# t[ as.numeric(t[,2]) < 0 ] = 1
-	mtry_use = as.numeric(t[which(t == min(t),arr.ind=T)[1],1])  
+	#Fit the model to training data
+	pred_train[[n]] = lake_models[[n]]  %>% fit(
+	  as.matrix(train_f),
+	  as.matrix(train_l),
+	  validation_split = 0.2,
+	  verbose = 0,
+	  epochs = 100
+	)
 
-	#Basic RF fitting
-	lake_models[[n]] = randomForest (as.formula(model_form [[n]] ),
-		data=train, proximity=TRUE, mtry = mtry_use)
-
-	#Prediction
-	pred_test[[n]] = predict(lake_models[[n]], test)
-
+	#Evaluate the performance on test data
+	pred_test[[n]] = lake_models[[n]]  %>% evaluate(
+	  as.matrix(test_f),
+	  as.matrix(test_l),
+	  verbose = 0
+	)
 
 
 }
 
 ##############################################################
-#PART 3: Look at the importance of variables
+#PART 3: Look at performance and importance of variables
 ##############################################################
-n=2
+n=1
 plot(lake_models[[n]])
+plot(pred_train[[n]])
+plot(pred_test[[n]])
+
+ind = sample(nrow(train_f), 500)
+train_f_sub = train_f[ind, ]
+
+ks = kernelshap(
+    train_f_sub, 
+    pred_fun = function(X) as.numeric(predict(lake_models[[n]], X, batch_size = nrow(X))), 
+    bg_X = train_f_sub
+  )
+
+
+)
+ks
+
+
+el = lime(train_f, lake_models[[n]])
+explain(test_f, el, n_features = 12)
+
+
+
+# Setup lime::model_type()
+model_type.keras.engine.sequential.Sequential = function(x, ...) {
+  "classification"}
+
+# Setup lime::predict_model()
+predict_model.keras.engine.sequential.Sequential = function (x, newdata, type, ...) {
+  pred =predict(object = x, x = as.matrix(newdata))
+  data.frame (Positive = pred, Negative = 1 - pred) }
+
+# Teste do modelo
+predict_model (x       = lake_models[[n]], 
+               newdata = train_f, 
+               type    = 'raw')
+
+
+explainer = lime(x = train_f, model= lake_models[[n]])   
+explanation = lime::explain (
+    x = test_f,
+    explainer    = explainer, 
+    n_features = 1,
+    n_labels = 12)
+
 print(mean((pred_test[[n]]-test$level)^2))
 
 hist(treesize(lake_models[[n]]),
