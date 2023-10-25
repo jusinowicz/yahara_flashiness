@@ -24,9 +24,10 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 nasa_pars = c("PRECTOTCORR")
 
 #Where the historical data should start
-#How long of a data set? Currently 30 years
-real_start = list( ymd("1980-1-1"), ymd("1980-1-1"))
-
+#How long of a data set? Currently 10 years
+#real_start = list( ymd("1980-1-1"), ymd("1980-1-1")) #Too big to save
+real_start = list( ymd("2013-1-1"), ymd("2013-1-1"))
+  
 #Where the lake stage and rain data live: 
 lake_data = vector("list", n_lakes)
 
@@ -36,23 +37,23 @@ lags = 10
 #If the fitted GAM model is already known, then describe each model:
 model_form = vector("list", n_lakes)
 #model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)"
-model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-    s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+
-    s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
-    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
-    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
-    te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
-    te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+# model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+#     s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+
+#     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+#     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+#     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
+#     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
-model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-    s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
-    s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
-    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
-    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
-    te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
-    te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+# model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+#     s(level4,bs=\"cr\",k=6)+s(level5,bs=\"cr\",k=6)+s(level6,bs=\"cr\",k=6)+
+#     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+#     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+#     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
+#     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 model_form [[1]] = "level ~
     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
