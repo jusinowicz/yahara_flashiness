@@ -231,6 +231,49 @@ for(n in 1:n_lakes){
 
 ##############################################################
 #PART 3: Look at performance and importance of variables
+#Use LIME to plot feature importance. 
+##############################################################
+
+class( lake_models[[n]])
+# Setup lime::model_type().The only input is x, the keras model. 
+# The function simply returns classification, which tells LIME we 
+# are classifying.
+model_type.keras.engine.sequential.Sequential = function(x, ...) {
+  "classification"}
+
+# Setup the prediction function for the model type
+predict_model.keras.engine.sequential.Sequential = function (x, 
+	newdata, type, ...) {
+  pred <- predict(object = x, x = as.matrix(newdata))
+  data.frame (Positive = pred, Negative = 1 - pred) 
+}
+
+#Test that we have set this up correctly
+predict_model (x       = lake_models[[n]], 
+               newdata = train_f, 
+               type    = 'raw')
+
+#Create an explainer with LIME. 
+#If data were categorical, set bin_continuous = FALSE
+explainer = lime(x = train_f, model= lake_models[[n]], 
+	bin_continuous = TRUE)  
+
+#Run explain on the explanation:
+explanation = lime::explain (
+    x = test_f[1:10, ],
+    explainer    = explainer, 
+    n_features = 4,
+    n_labels = 1,  
+    kernel_width = 0.5)
+
+#Plot the features as bar plots with the built-in plot tool
+plot_features (explanation)
+
+
+
+#########################################################################
+# This is junk from failed attempts to get feature significance to run
+# I think some of this code might be useful later so I'm saving it here.
 # conda create -n py3.11 python=3.11 scikit-learn pandas numpy matplotlib
 #
 # So far I have been unable to get any of the various 
@@ -239,7 +282,6 @@ for(n in 1:n_lakes){
 # directly to python but this seems fraught with its own 
 # difficulties. Giving up on making this work in R for now.
 # Nothing below here actually works :(
-##############################################################
 
 use_condaenv("py3.11", required = TRUE)
 use_condaenv("py3.10_tf", required = TRUE)
@@ -308,49 +350,3 @@ ks
 
 el = lime:lime(train_f, lake_models[[n]])
 explain(test_f, el, n_features = 12)
-
-
-
-# Setup lime::model_type()
-model_type.keras.engine.sequential.Sequential = function(x, ...) {
-  "classification"}
-
-# Setup lime::predict_model()
-predict_model.keras.engine.sequential.Sequential = function (x, newdata, type, ...) {
-  pred =predict(object = x, x = as.matrix(newdata))
-  data.frame (Positive = pred, Negative = 1 - pred) }
-
-# Teste do modelo
-predict_model (x       = lake_models[[n]], 
-               newdata = train_f, 
-               type    = 'raw')
-
-
-explainer = lime::lime(x = train_f, model= lake_models[[n]])   
-explanation = lime::explain (
-    x = test_f,
-    explainer    = explainer, 
-    n_features = 1,
-    n_labels = 12)
-
-print(mean((pred_test[[n]]-test$level)^2))
-
-hist(treesize(lake_models[[n]]),
-     main = "No. of Nodes for the Trees",
-     col = "green")
-
-#Variable Importance
-varImpPlot(lake_models[[n]],
-           sort = T,
-           n.var = 10,
-           main = "Top 10 - Variable Importance")
-
-#MeanDecreaseGini
-importance(lake_models[[n]])[order(importance(lake_models[[n]]),decreasing = T),]
-
-
-#Useful correlation plot
-lake_data[[n]] %>% select(level, rn1, rn2,rn3,rn4,rn5) %>%
- ggpairs(lake_data[[n]])
-
-#Useful quick glimpse	  
