@@ -29,7 +29,7 @@ source("./functions/flash_functions.R")
 current_date = Sys.Date() #Current date. Could be set to other
 
 #How long of a data set? Currently 30 years
-yl1 = 30
+yl1 = 10
 start_date = current_date  -  years(yl1)
 
 #USGS site keys. Currently includes Mendota and Monona
@@ -383,6 +383,6 @@ for(n in 1:n_lakes){
 	# Use bam() (instead of gam()) from mgcv because it is designed for 
 	# large data sets.
 
-	lake_models[[n]] = bam ( as.formula((model_form [[n]] )), data=lake_r, cluster=cl )
+	lake_models[[n]] = bam ( as.formula((model_form [[n]] )), data=lake_r)
 
 }

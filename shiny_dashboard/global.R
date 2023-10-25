@@ -24,6 +24,7 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 nasa_pars = c("PRECTOTCORR")
 
 #Where the historical data should start
+#How long of a data set? Currently 30 years
 real_start = list( ymd("1980-1-1"), ymd("1980-1-1"))
 
 #Where the lake stage and rain data live: 
@@ -52,6 +53,21 @@ model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[1]] = "level ~
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(level4,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+    te(rn3,time,k=20)+te(rn4,time,k=20)"
+
+model_form [[2]] = "level ~ 
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(level4,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+    te(rn3,time,k=20)+te(rn4,time,k=20)"
+
 
 # model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
 #     s(rn,bs=\"cr\",k=6)+ s(rn2,bs=\"cr\",k=6)+ ti(rn,time,k=20)+ ti(rn2,time,k=20)"
@@ -229,7 +245,7 @@ updateModel = function (lake_data, model_form){
       models_Vp[[n]] = new_models[[n]]$Vp
     }
 
-    save(file = "lakeGAMsLpB.var", models_Xp, models_coef, models_Vp )
+    save(file = "lakeGAMsLpB_test.var", models_Xp, models_coef, models_Vp )
 
 
   }
@@ -323,7 +339,7 @@ updateModel = function (lake_data, model_form){
    }
 }
 
-
+}
 # An empty prototype of the data frame we want to create
 prototype <- data.frame(date = character(), time = character(),
   size = numeric(), r_version = character(), r_arch = character(),

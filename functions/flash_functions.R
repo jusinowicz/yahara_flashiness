@@ -284,8 +284,7 @@ fitGAM_ar = function( lake_data, model_form){
 		# lake_models[[n]] = bam( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
 		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
 
-		lake_models3 [[n]] = bam( as.formula(model_form[[n]]), method = "REML",
-		 data=lake_r )
+		lake_models3 [[n]] = bam( as.formula(model_form[[n]]), data=lake_r )
 
 
 	}

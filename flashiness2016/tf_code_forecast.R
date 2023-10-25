@@ -42,7 +42,7 @@ library(recipes)
 current_date = Sys.Date() #Current date. Could be set to other
 
 #How long of a data set? Currently 30 years
-yl1 = 30
+yl1 = 15
 start_date = current_date  -  years(yl1)
 
 #USGS site keys. Currently includes Mendota and Monona
