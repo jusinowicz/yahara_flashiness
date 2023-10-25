@@ -231,7 +231,62 @@ for(n in 1:n_lakes){
 
 ##############################################################
 #PART 3: Look at performance and importance of variables
+# conda create -n py3.11 python=3.11 scikit-learn pandas numpy matplotlib
+#
+# So far I have been unable to get any of the various 
+# feature-significance methods/packages to run successfully
+# on a keras DNN. Tried setting up reticulate to export 
+# directly to python but this seems fraught with its own 
+# difficulties. Giving up on making this work in R for now.
+# Nothing below here actually works :(
 ##############################################################
+
+use_condaenv("py3.11", required = TRUE)
+use_condaenv("py3.10_tf", required = TRUE)
+
+reticulate::conda_install(
+    packages = c("lime", "scikit-learn","numpy","pandas"),
+    envname = "py3.10_tf"
+)
+
+sklearn = import("sklearn") 
+tf = import("tensorflow") 
+np = import("numpy")
+shp = import("shap") 
+lm = import("lime")
+pd = import("pandas")
+
+explainer = lime$lime_tabular$LimeTabularExplainer(train_f, feature_names=list(train_f), class_names=[0, 1], mode='classification')
+
+explainer = lm$lime_tabular$LimeTabularExplainer(train_f, training_labels=train_l, 
+										 feature_names=train,
+                                                   discretize_continuous=TRUE,
+                                                   #class_names=['Falling', 'Rising'],
+                                                   discretizer='decile')
+
+explainer = shp$TreeExplainer(lake_models[[n]])
+shap_values = explainer.shap_values(X)
+
+
+shp$initjs()
+
+
+nr = 10
+nr = as.integer(nr)
+rs = 0
+rs = as.integer(rs)
+sklearn$inspection$permutation_importance(lake_models[[n]], train_f, 
+	train_l, n_repeats=nr, random_state=rs)  
+
+
+explainer <- shapr(train_f, lake_models[[n]])
+
+```{python}
+
+1+1
+
+```
+
 n=1
 plot(lake_models[[n]])
 plot(pred_train[[n]])
@@ -251,7 +306,7 @@ ks = kernelshap(
 ks
 
 
-el = lime(train_f, lake_models[[n]])
+el = lime:lime(train_f, lake_models[[n]])
 explain(test_f, el, n_features = 12)
 
 
@@ -271,7 +326,7 @@ predict_model (x       = lake_models[[n]],
                type    = 'raw')
 
 
-explainer = lime(x = train_f, model= lake_models[[n]])   
+explainer = lime::lime(x = train_f, model= lake_models[[n]])   
 explanation = lime::explain (
     x = test_f,
     explainer    = explainer, 
