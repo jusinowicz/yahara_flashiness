@@ -62,7 +62,7 @@ function(input, output) {
   ##############################################################
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
-  updateModel(lake_data)
+  updateModel(lake_data,model_form)
 
   #Predict the future lake-level response from the saved GAMs
   predictFlashGAM(lake_data, fut_precip)

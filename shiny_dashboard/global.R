@@ -55,20 +55,46 @@ model_form = vector("list", n_lakes)
 #     te(rn3,time,k=20)+te(rn4,time,k=20)+te(rn,rn1,k=20)+
 #     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
-model_form [[1]] = "level ~
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-    s(level4,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
-    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
-    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
-    te(rn3,time,k=20)+te(rn4,time,k=20)"
+model_form [[1]] = "level ~ 
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
+    s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+    te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 model_form [[2]] = "level ~ 
     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-    s(level4,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
-    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
-    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
-    te(rn3,time,k=20)+te(rn4,time,k=20)"
+    s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+    te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
+# model_form [[1]] = "level ~
+#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+#     s(level4,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+#     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+#     te(rn3,time,k=20)+te(rn4,time,k=20)"
+
+# model_form [[2]] = "level ~ 
+#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+#     s(level4,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+s(rn4,bs=\"cr\",k=6)+
+#     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+#     te(rn3,time,k=20)+te(rn4,time,k=20)"
+
+
+model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
+    s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+    te(rn3,time,k=20)"
+
+model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(rn1,bs=\"cr\",k=6)+
+    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+    te(rn3,time,k=20)"
 
 # model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
 #     s(rn,bs=\"cr\",k=6)+ s(rn2,bs=\"cr\",k=6)+ ti(rn,time,k=20)+ ti(rn2,time,k=20)"
@@ -208,8 +234,8 @@ updateModel = function (lake_data, model_form){
   model_files = list.files("./")
   model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
 
-  #Test if there is a model for each lake
-  if(  sum(model_true) >= n_lakes ){   
+  #Test if thefile exists
+  if(  sum(model_true) >= 1 ){   
     
     #Which are the model files? 
     model_files = model_files[model_true == TRUE ]
@@ -236,9 +262,18 @@ updateModel = function (lake_data, model_form){
     models_Xp = vector("list", n_lakes)
     models_coef = vector("list", n_lakes)
     models_Vp = vector("list", n_lakes)
+    model_smooths =  vector("list", n_lakes)
 
-    for (n in 1:n_lakes){ 
-      #Model Lp matrix
+    for (n in 1:n_lakes){
+      #Get the model summary to extract names of terms:
+      sum_tmp = summary(new_models[[n]]) 
+      model_smooths[[n]] =  rownames(sum_tmp$s.table)
+
+      #Create a new data frame that essentially creates an 
+      #equally spaced grid over the range of each variable 
+      #in the data set. Then get the Lp matrix from that to 
+      #use for prediction. 
+
       models_Xp[[n]] = predict(new_models[[n]],lake_data[[n]],type="lpmatrix" )
       #Model coefficients
       models_coef[[n]] = coef(new_models[[n]])
@@ -246,7 +281,8 @@ updateModel = function (lake_data, model_form){
       models_Vp[[n]] = new_models[[n]]$Vp
     }
 
-    save(file = "lakeGAMsLpB_test.var", models_Xp, models_coef, models_Vp )
+    save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
+    save(file = "lakeGAMsLp_full.var", lake_models ) #Too big? :(
 
 
   }
@@ -257,10 +293,19 @@ updateModel = function (lake_data, model_form){
  predictFlashGAM = function(lake_data, fut_precip){
 
     #Where the fitted model coefficients and Lp matrix live
-    load(file = "lakeGAMsLpB.var" )
+    model_files = list.files("./")
+    model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
+
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      load(paste(model_files[n]) )
+    }
 
     #How many days are we forecasting? 
-    n_days = dim(fut_precip)[2]
+    n_days = dim(fut_precip)[1]
 
     #Most current time step
     ntime = dim(lake_data[[1]])[1]
@@ -289,51 +334,66 @@ updateModel = function (lake_data, model_form){
       if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
       
       #Get the last section of data table for lags
-      lt = tail(lake_data[[n]], l_arr)
+      lt = tail(lake_data[[n]], l_arl)
  
-      #The new data set for prediction
-      lt_new = t(as.matrix(c(ndays+1, tail(lt,l_arl)$level, fut_precip[1,"rain"], lt$rn[2:lags] ) ))
+      #The start of the new data set for prediction with 
+      #the first new day
+      lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
+        fut_precip[1,2],
+        lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
+      colnames(lt_tmp) = colnames(lt)
+      lt_new = rbind( lt,lt_tmp) 
+      lt_use = lt_new[, -2]
 
       #Figure out the smooth terms 
-      #Clear out all spaces
-      model_clean[n] = str_replace_all(model_form[[n]], fixed(" "), "")
-      #Split by each occurence of k, get the next 5 characters, match any 
-      #digits 0-9 and make numeric.
-      model_ks[[n]] = model_clean[n] %>% 
-                  str_split("k") %>%
-                  unlist() %>%
-                  str_sub(1,5) %>%
-                  str_match_all("[0-9]+") %>%
-                  unlist() %>%
-                  as.numeric()
+      n_terms = length(model_smooths[[n]])
+      all_ks = colnames(models_Xp[[n]])
+      model_ks[[n]] = matrix(0,n_terms,1)
 
-      n_smooth = length(model_ks[[n]])
+      for(t in 1:n_terms){
+
+        sm_tmp = model_smooths[[n]][t] 
+        ks_tmp = grepl(
+        glob2rx(paste(sm_tmp,".*",sep="")), 
+        all_ks)
+        model_ks[[n]][t] = sum(ks_tmp) 
+
+      }
+
+      n_smooth = sum(model_ks[[n]])
 
       #Find the average distance between samples:
       ldiffs = apply(lake_data[[n]],2,diff)  
       m_ldiff = apply(abs(ldiffs), 2, mean,na.rm=T) 
       
+ 
+      
       #Do each time-step sequentially: 
       for (f in 1:n_days){
 
+        x0 = 1         ## intercept column
+
         #Loop through smooth terms:
-        for ( j in 0:(n_smooth-1) ) {
-          dx = m_ldiff[j]
+        for ( j in 0:(n_terms-1) ) {
+          dx = m_ldiff[j+2]
           #Get the set of columns for the smooth
-          lcols = 1+j*(model_ks[[n]][j+1]-1) + 1:(model_ks[[n]][j+1]-1)
+          if(j == 0) { cst = 0 }else{
+            cst = sum(model_ks[[n]][1:(j)])
+          }
+          lcols = 1+cst + 1:(model_ks[[n]][j+1])
           #Find the relevant rows
-          lrows = floor(lt_new[j+1]/dx) 
-          w1 = (lt_new[j+1]-i*dx)/dx ## interpolation weights
+          lrows = floor(lt_use[ (l_arl+f),j+2]/dx) 
+          w1 = (lt_use[(l_arl+f), j+2]-lrows*dx)/dx ## interpolation weights
           ## find approx. predict matrix row portion, by interpolation
-          x0 = c(x0,Xp[lrows+2,lcols]*w1 + Xp[lrows+1,lcols]*(1-w1))
+          x0 = c(x0,models_Xp[[n]][lrows+2,lcols]*w1 + models_Xp[[n]][lrows+1,lcols]*(1-w1))
         }
 
-        dim(x0)=c(1,dim(Xp)[2]) 
-        fv = x0%*%coef(b) + xn[4]    ## evaluate and add offset
-        se = sqrt(x0%*%b$Vp%*%t(x0)) ## get standard error
+        dim(x0)=c(1,dim(models_Xp[[n]])[2]) 
+        fv = x0%*%models_coef[[n]]   ## evaluate and add offset
+        se = sqrt(x0%*%models_Vp[[n]]%*%t(x0)) ## get standard error
+
         ## compare to normal prediction
-        predict(b,newdata=data.frame(x0=xn[1],x1=xn[2],
-                x2=xn[3],x3=xn[4]),se=TRUE)
+        a1=predict(lake_models[[n]],newdata=lt_use,se=TRUE)
 
 
 
@@ -418,3 +478,11 @@ userCount <- function(pkgStream) {
     total
   })
 }
+
+
+
+    { "keys": ["ctrl+shift+b"], "command": "toggle_terminus_panel" },
+      {
+      "keys": ["ctrl+shift+enter"],
+      "command": "send_selection_to_terminus"
+    }

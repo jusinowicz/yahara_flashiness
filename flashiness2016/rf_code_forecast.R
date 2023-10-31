@@ -23,6 +23,7 @@
 ##############################################################
 library(tidyverse)
 library(lubridate)
+library(shiny)
 library(rvest) #To parse table from webpage
 library(nasapower) #API for NASA data, for precipitation
 source("./functions/flash_functions.R")
