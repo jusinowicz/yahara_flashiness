@@ -56,13 +56,14 @@ model_form = vector("list", n_lakes)
 #     te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 model_form [[1]] = "level ~ 
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(level4,bs=\"cr\",k=6)+
     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
     te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 model_form [[2]] = "level ~ 
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
     te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
@@ -211,13 +212,13 @@ updateHistoric = function() {
   daily_precip[,"time"] = ymd(daily_precip[,"time"])
 
   #Make backups of previous file:
-  # file.copy(from = "./../data/men_hist.csv", to ="./../data/men_hist.csv.bck")
-  # file.copy(from = "./../data/mon_hist.csv", to ="./../data/mon_hist.csv.bck")
-  # file.copy(from = "./../data/rain_hist.csv", to ="./../data/rain_hist.csv.bck")
+  file.copy(from = "./../data/men_hist.csv", to ="./../data/men_hist.csv.bck")
+  file.copy(from = "./../data/mon_hist.csv", to ="./../data/mon_hist.csv.bck")
+  file.copy(from = "./../data/rain_hist.csv", to ="./../data/rain_hist.csv.bck")
 
-  file.copy(from = "men_hist.csv", to ="men_hist.csv.bck")
-  file.copy(from = "mon_hist.csv", to ="mon_hist.csv.bck")
-  file.copy(from = "rain_hist.csv", to ="rain_hist.csv.bck")
+  # file.copy(from = "men_hist.csv", to ="men_hist.csv.bck")
+  # file.copy(from = "mon_hist.csv", to ="mon_hist.csv.bck")
+  # file.copy(from = "rain_hist.csv", to ="rain_hist.csv.bck")
 
 
   #Get the last dates entered. If they don't match to the current date
@@ -254,12 +255,13 @@ updateHistoric = function() {
 
   }
 
-  # write.table(lake_data[[1]][,1:2], file = "./../data/men_hist.csv", sep=",")
-  # write.table(lake_data[[2]][,1:2], file = "./../data/mon_hist.csv", sep=",")
-  # write.table(lake_data[[1]][,c(1,3)], file = "./../data/rain_hist.csv", sep=",")
-  write.table(lake_data[[1]][,1:2], file = "men_hist.csv", sep=",")
-  write.table(lake_data[[2]][,1:2], file = "mon_hist.csv", sep=",")
-  write.table(lake_data[[1]][,c(1,3)], file = "rain_hist.csv", sep=",")
+  write.table(lake_data[[1]][,1:2], file = "./../data/men_hist.csv", sep=",")
+  write.table(lake_data[[2]][,1:2], file = "./../data/mon_hist.csv", sep=",")
+  write.table(lake_data[[1]][,c(1,3)], file = "./../data/rain_hist.csv", sep=",")
+
+  # write.table(lake_data[[1]][,1:2], file = "men_hist.csv", sep=",")
+  # write.table(lake_data[[2]][,1:2], file = "mon_hist.csv", sep=",")
+  # write.table(lake_data[[1]][,c(1,3)], file = "rain_hist.csv", sep=",")
 }
 
 ###############################################################################
@@ -360,6 +362,9 @@ predictFlashGAM = function(lake_data, fut_precip){
     #Most current time step
     ntime = dim(lake_data[[1]])[1]
 
+    #Predicted lake levels 
+    pred_lakes = vector("list",n_lakes)
+
     #Build the new data set for prediction and make predictions:
     for (n in 1:n_lakes){ 
 
@@ -376,7 +381,12 @@ predictFlashGAM = function(lake_data, fut_precip){
       
       #Get the last section of data table for lags
       lt = tail(lake_data[[n]], l_arl)
- 
+      
+      #Look for an NA in most recent rn, this happens
+      if(sum(is.na(lt$rn)) > 0){  
+        lt$rn[is.na(lt$rn)] = mean(lt$rn,na.rm=T)
+      }
+
       #The start of the new data set for prediction with 
       #the first new day
       lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
@@ -384,12 +394,51 @@ predictFlashGAM = function(lake_data, fut_precip){
         lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
       colnames(lt_tmp) = colnames(lt)
       lt_new = rbind( lt,lt_tmp) 
-      lt_use = lt_new[, -2]
-
       
-      a1=predict(lake_models[[n]],newdata=lt_use,se.fit=TRUE)
+      #Initialize data
+      lt_use = lt_new[l_arl+1,]
+      lt_save = NULL
 
+      #Temporarily store predicted lake level and SE
+      pr_tmp = matrix(0, n_days, 4 )
+      pr_tmp[,1] = ntime+(1:n_days)
+      pr_tmp[,2] = fut_precip$rn
 
+      for (t in 1:n_days){
+
+        pt = predict(lake_models[[n]], newdata=lt_use,se.fit=TRUE)
+        pr_tmp[t,3] =pt$fit[1]
+        pr_tmp[t,4] = pt$se[1]
+
+        #Now update the lags in lt_use with data for this day, 
+        #but don't do this for n_days
+        if (t < n_days){ 
+
+          lt_use$level = pr_tmp[t,3] #Replace NA with prediction
+          lt_use = as.data.frame(c(ntime+t, NA, lt_use[1,2:(l_arl+1)],
+          fut_precip[t+1,2],
+          lt_use[1,(l_arl+3):(l_arl+2+l_arr) ] ))
+          colnames(lt_use) = colnames(lt)
+        }else{   }
+      
+      }
+
+  t1 = 2170
+  t2 = 2270     
+      a1=predict(lake_models[[n]],newdata=lake_data[[n]][t1:t2,],se.fit=TRUE)
+
+     # a2 = data.frame(time =lake_data[[n]][,1], 
+     #    level = lake_data[[n]][,"level"], 
+     #    level_p = a1$fit, se = a1$se )
+
+      a2 = data.frame(time =lake_data[[n]][t1:t2,1], 
+        level = lake_data[[n]][t1:t2,"level"], 
+        level_p = a1$fit, se = a1$se )
+
+      ggplot( ) + geom_line(data = a2, aes(x = time, y=level_p)) +
+      geom_ribbon(data = a2, aes(x = time, ymin = level_p-se, ymax = level_p+se), alpha = 0.2)+
+      geom_point(data = a2, aes(x=time, y=level),color="red") 
+        
 
       #Do each time-step sequentially: 
       for (f in 1:n_days){

@@ -23,6 +23,12 @@ function(input, output) {
   daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
   daily_precip[[2]] = daily_precip[[1]]
 
+  #Truncate the data 
+  for (n in 1:n_lakes){ 
+    lake_table[[n]] = lake_table[[n]][lake_table[[n]][,"time"] > real_start[[n]], ]
+
+  }
+  
   #Final processing steps of the raw data which joins lake
   #and precip and truncates to desired start date. 
   for (n in 1: n_lakes){
@@ -53,8 +59,8 @@ function(input, output) {
   #Get the rain forecast data:
   fut_precip = as.data.frame(weather_forecast(location =  
     c(43.0930, -89.3727), daily="precipitation_sum") )
-  colnames(fut_precip) = c("time", "rain")
-
+  colnames(fut_precip) = c("time", "rn")
+  fut_precip$rn = fut_precip$rn / 25.4 #Convert mm to inches
 
 
   ##############################################################
