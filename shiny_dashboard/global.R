@@ -82,19 +82,19 @@ model_form [[2]] = "level ~
 #     te(rn3,time,k=20)+te(rn4,time,k=20)"
 
 
-model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
-    s(rn1,bs=\"cr\",k=6)+
-    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
-    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
-    te(rn3,time,k=20)"
+# model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
+#     s(rn1,bs=\"cr\",k=6)+
+#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+#     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+#     te(rn3,time,k=20)"
 
-model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
-    s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-    s(rn1,bs=\"cr\",k=6)+
-    s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
-    te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
-    te(rn3,time,k=20)"
+# model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
+#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
+#     s(rn1,bs=\"cr\",k=6)+
+#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+#     te(rn,time,k=20)+te(rn1,time,k=20)+te(rn2,time,k=20)+
+#     te(rn3,time,k=20)"
 
 # model_form [[1]] = "level ~ s(time, bs = \"cr\", k = 100)+
 #     s(rn,bs=\"cr\",k=6)+ s(rn2,bs=\"cr\",k=6)+ ti(rn,time,k=20)+ ti(rn2,time,k=20)"
@@ -115,12 +115,15 @@ model_form [[2]] = "level ~ s(time, bs = \"cr\", k = 100)+
 #Global functions 
 ##############################################################
 
+###############################################################################
 #This is a helper function for lake level. If the data is not up to date, do
 #all of the necessary data procesing. 
-updateLake = function (lake_table, start_date, current_date) {
+###############################################################################
+
+updateLake = function (lake_table, start_date, current_date, site_key) {
 
   #Use the USGS address format to get data over the date range
-  url1 = paste(url_base[1], site_keys[n], "&startDT=", start_date,
+  url1 = paste(url_base[1], site_key, "&startDT=", start_date,
     "&endDT=",current_date,"&parameterCd=00060,00065&siteStatus=all",sep="" )
   
   lt_temp = as.data.frame(read_delim(print(url1), comment = "#", delim="\t"))
@@ -143,8 +146,11 @@ updateLake = function (lake_table, start_date, current_date) {
 
 }
 
+###############################################################################
 #This is a helper function for rain. If the data is not up to date, do
 #all of the necessary data procesing. 
+###############################################################################
+
 updateRain = function (daily_rain, start_date, current_date) {
 
   #Get the matching precipitation data from the NASA POWER collection
@@ -161,17 +167,19 @@ updateRain = function (daily_rain, start_date, current_date) {
 
 }
 
-
+###############################################################################
 # Load the historical data and check whether it is up to date. 
+###############################################################################
+
 updateHistoric = function() {
 
   #Preallocate the important historical data tables 
   lake_table = vector("list", n_lakes)
-  daily_precip = vector("list", n_lakes)
+  daily_precip = NULL
 
   #Last dates that appear in the data sets
   last_date = vector("list",n_lakes)
-  last_rain = vector("list",n_lakes)
+  last_rain = NULL
 
   #Load the current data files
   current_date = ymd( Sys.Date() ) #Current date. Could be set to other
@@ -179,51 +187,69 @@ updateHistoric = function() {
   lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
   lake_table[[2]] = read.csv(file = "./../data/mon_hist.csv")
   lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
-  daily_precip[[1]] = read.csv(file = "./../data/rain_hist.csv")
-  daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
-  daily_precip[[2]] = daily_precip[[1]]
+  daily_precip = read.csv(file = "./../data/rain_hist.csv")
+  daily_precip[,"time"] = ymd(daily_precip[,"time"])
 
   #Make backups of previous file:
-  file.copy(from = "./../data/men_hist.csv", to ="./../data/men_hist.csv.bck")
-  file.copy(from = "./../data/mon_hist.csv", to ="./../data/mon_hist.csv.bck")
-  file.copy(from = "./../data/rain_hist.csv", to ="./../data/rain_hist.csv.bck")
+  # file.copy(from = "./../data/men_hist.csv", to ="./../data/men_hist.csv.bck")
+  # file.copy(from = "./../data/mon_hist.csv", to ="./../data/mon_hist.csv.bck")
+  # file.copy(from = "./../data/rain_hist.csv", to ="./../data/rain_hist.csv.bck")
+
+  file.copy(from = "men_hist.csv", to ="men_hist.csv.bck")
+  file.copy(from = "mon_hist.csv", to ="mon_hist.csv.bck")
+  file.copy(from = "rain_hist.csv", to ="rain_hist.csv.bck")
+
 
   #Get the last dates entered. If they don't match to the current date
   #then update the data with the functions updateLake and updateRain. 
   #Write the new files.  
-  for ( n in 1:n_lakes){ 
 
-    #For the lakes
+  #For the precip first (same data for all lakes)
+  last_rain= daily_precip[nrow(daily_precip),"time"]
+  if(last_rain != current_date  ){ 
+    daily_precip = rbind(daily_precip,
+        updateRain(daily_precip, start_date = last_rain, 
+          current_date = current_date) )
+    daily_precip = daily_precip[-( (nrow(daily_precip)-1):
+      nrow(daily_precip)), ]
+  }
+
+  #For the lakes
+  for ( n in 1:n_lakes){ 
+    
+    site_key = site_keys[n]
+
     last_date[[n]] = lake_table[[n]][nrow(lake_table[[n]]),"time"]
+    
     if(last_date[[n]] != current_date  ){ 
       lake_table[[n]] = rbind(lake_table[[n]],
           updateLake(lake_table[[n]], start_date = last_date[[n]], 
-          current_date = current_date ) )
+          current_date = current_date, site_key = site_key ) )
       lake_table[[n]] = lake_table[[n]][-( (nrow(lake_table[[n]])-2):
         nrow(lake_table[[n]])), ]
     }
 
-    #For the precip
-    last_rain[[n]] = daily_precip[[n]][nrow(daily_precip[[n]]),"time"]
-    if(last_rain[[n]] != current_date  ){ 
-      daily_precip[[n]] = rbind(daily_precip[[n]],
-          updateRain(daily_precip[[n]], start_date = last_rain[[n]], 
-            current_date = current_date) )
-      daily_precip[[n]] = daily_precip[[n]][-( (nrow(daily_precip[[n]])-1):
-        nrow(daily_precip[[n]])), ]
-    }
-
     lake_data[[n]] = lake_table[[n]] %>%
-        inner_join(daily_precip[[n]], by = "time" ) 
+        inner_join(daily_precip, by = "time" ) 
 
   }
 
-  write.table(lake_data[[1]][,1:2], file = "./../data/men_hist.csv", sep=",")
-  write.table(lake_data[[2]][,1:2], file = "./../data/mon_hist.csv", sep=",")
-  write.table(lake_data[[1]][,c(1,3)], file = "./../data/rain_hist.csv", sep=",")
-
+  # write.table(lake_data[[1]][,1:2], file = "./../data/men_hist.csv", sep=",")
+  # write.table(lake_data[[2]][,1:2], file = "./../data/mon_hist.csv", sep=",")
+  # write.table(lake_data[[1]][,c(1,3)], file = "./../data/rain_hist.csv", sep=",")
+  write.table(lake_data[[1]][,1:2], file = "men_hist.csv", sep=",")
+  write.table(lake_data[[2]][,1:2], file = "mon_hist.csv", sep=",")
+  write.table(lake_data[[1]][,c(1,3)], file = "rain_hist.csv", sep=",")
 }
 
+###############################################################################
+# updateModel is the function to take fit a GAM model if one does not already
+# exist. It is effectively a wrapper for the fuction fitGAM in the 
+# flash_functions.R file. It looks to see if models already exist. 
+# It returns either (or both) an LP matrix and the R variable for the fitted
+# models, depending on how the code below is commented.
+#
+###############################################################################
 
 updateModel = function (lake_data, model_form){
 
@@ -282,15 +308,120 @@ updateModel = function (lake_data, model_form){
     }
 
     save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
-    save(file = "lakeGAMsLp_full.var", lake_models ) #Too big? :(
+    save(file = "lakeGAMsfull.var", lake_models ) #Too big? :(
 
 
   }
 
 }
 
+###############################################################################
+# predictFlashGAM uses the fitted GAM to predict future rain
+# It returns fitted data points with SE for the number of future precipitation 
+# events that have been given to it. 
+###############################################################################
+predictFlashGAM = function(lake_data, fut_precip){
 
- predictFlashGAM = function(lake_data, fut_precip){
+    #Where the fitted model coefficients and Lp matrix live
+    model_files = list.files("./")
+    model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
+
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      load(paste(model_files[n]) )
+    }
+
+    #How many days are we forecasting? 
+    n_days = dim(fut_precip)[1]
+
+    #Most current time step
+    ntime = dim(lake_data[[1]])[1]
+
+    #This section will break down the formula and extract two 
+    #key pieces of info: the number of smooth terms and the 
+    #number of knots for each 
+    model_clean = vector("character",n_lakes)
+    model_ks = vector("list",n_lakes)
+
+    #a1 = ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
+    
+    # fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
+
+    for (n in 1:n_lakes){ 
+
+      #AR order of rain and lake level
+      ar_lake = grep("level", (colnames(lake_data[[n]])))
+      ar_lake = ar_lake[-1]
+      ar_rain = grep("rn", (colnames(lake_data[[n]]))) 
+      ar_rain = ar_rain[-1]
+      l_arl = length (ar_lake)
+      l_arr = length (ar_rain)
+
+      #Which AR is larger? 
+      if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
+      
+      #Get the last section of data table for lags
+      lt = tail(lake_data[[n]], l_arl)
+ 
+      #The start of the new data set for prediction with 
+      #the first new day
+      lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
+        fut_precip[1,2],
+        lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
+      colnames(lt_tmp) = colnames(lt)
+      lt_new = rbind( lt,lt_tmp) 
+      lt_use = lt_new[, -2]
+
+      
+      a1=predict(lake_models[[n]],newdata=lt_use,se=TRUE)
+
+
+
+      #Do each time-step sequentially: 
+      for (f in 1:n_days){
+
+        x0 = 1         ## intercept column
+
+        #Loop through smooth terms:
+        for ( j in 0:(n_terms-1) ) {
+          dx = m_ldiff[j+2]
+          #Get the set of columns for the smooth
+          if(j == 0) { cst = 0 }else{
+            cst = sum(model_ks[[n]][1:(j)])
+          }
+          lcols = 1+cst + 1:(model_ks[[n]][j+1])
+          #Find the relevant rows
+          lrows = floor(lt_use[ (l_arl+f),j+2]/dx) 
+          w1 = (lt_use[(l_arl+f), j+2]-lrows*dx)/dx ## interpolation weights
+          ## find approx. predict matrix row portion, by interpolation
+          x0 = c(x0,models_Xp[[n]][lrows+2,lcols]*w1 + models_Xp[[n]][lrows+1,lcols]*(1-w1))
+        }
+
+        dim(x0)=c(1,dim(models_Xp[[n]])[2]) 
+        fv = x0%*%models_coef[[n]]   ## evaluate and add offset
+        se = sqrt(x0%*%models_Vp[[n]]%*%t(x0)) ## get standard error
+
+        ## compare to normal prediction
+  
+
+   }
+}
+
+}
+
+###############################################################################
+# NOT IMPLEMENTED: 
+# predictFlashGAM_LP uses the Lp Matrix of a fitted GAM to predict
+#
+#This is the version of predictFlashGAM that would be used if the model 
+#produced in the fitting process was too massive to store and recall
+#efficiently from memory. 
+###############################################################################
+
+predictFlashGAM_LP = function(lake_data, fut_precip){
 
     #Where the fitted model coefficients and Lp matrix live
     model_files = list.files("./")
@@ -392,15 +523,17 @@ updateModel = function (lake_data, model_form){
         fv = x0%*%models_coef[[n]]   ## evaluate and add offset
         se = sqrt(x0%*%models_Vp[[n]]%*%t(x0)) ## get standard error
 
-        ## compare to normal prediction
-        a1=predict(lake_models[[n]],newdata=lt_use,se=TRUE)
-
 
 
    }
 }
 
 }
+
+
+
+
+
 # An empty prototype of the data frame we want to create
 prototype <- data.frame(date = character(), time = character(),
   size = numeric(), r_version = character(), r_arch = character(),
