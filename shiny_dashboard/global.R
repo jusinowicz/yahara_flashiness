@@ -184,9 +184,29 @@ updateHistoric = function() {
   #Load the current data files
   current_date = ymd( Sys.Date() ) #Current date. Could be set to other
   lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
-  lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
+  
+  #This is necessary because R ts objects convert time to decimal
+  #format. Sometimes this pops up as an issue. 
+  if (is.double(lake_table[[1]][,"time"])) {
+    lake_table[[1]][,"time"] = lake_table[[1]][,"time"] %>% 
+                                as.numeric() %>% 
+                                date_decimal() %>% 
+                                as_date()
+  }else{
+    lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
+  }
+
+
   lake_table[[2]] = read.csv(file = "./../data/mon_hist.csv")
-  lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
+  if (is.double(lake_table[[2]][,"time"])) {
+    lake_table[[2]][,"time"] = lake_table[[2]][,"time"] %>% 
+                                as.numeric() %>% 
+                                date_decimal() %>% 
+                                as_date()
+  }else{
+    lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
+  }
+
   daily_precip = read.csv(file = "./../data/rain_hist.csv")
   daily_precip[,"time"] = ymd(daily_precip[,"time"])
 
@@ -340,16 +360,7 @@ predictFlashGAM = function(lake_data, fut_precip){
     #Most current time step
     ntime = dim(lake_data[[1]])[1]
 
-    #This section will break down the formula and extract two 
-    #key pieces of info: the number of smooth terms and the 
-    #number of knots for each 
-    model_clean = vector("character",n_lakes)
-    model_ks = vector("list",n_lakes)
-
-    #a1 = ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
-    
-    # fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
-
+    #Build the new data set for prediction and make predictions:
     for (n in 1:n_lakes){ 
 
       #AR order of rain and lake level
@@ -376,7 +387,7 @@ predictFlashGAM = function(lake_data, fut_precip){
       lt_use = lt_new[, -2]
 
       
-      a1=predict(lake_models[[n]],newdata=lt_use,se=TRUE)
+      a1=predict(lake_models[[n]],newdata=lt_use,se.fit=TRUE)
 
 
 
