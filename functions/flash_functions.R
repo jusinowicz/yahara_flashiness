@@ -259,6 +259,63 @@ fitGAM_ar = function( lake_data, model_form){
 		# New lake-level time series based on residuals
 		lake_new=as.matrix(lake_gfit1@residuals)
 		
+		#Fit the AR 
+		ar_mod = ar(lake_gfit1@residuals)
+		lake_new_use = ar_mod$resid
+
+		# New time series after removing NAs in the rain
+		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
+		lake_new_use = as.matrix(lake_new_use[!is.na(lake_data[[n]][,"rn",drop=T])])
+		colnames(rn_new) = "rn"
+		colnames(lake_new_use) = "level"
+
+		#Combine all of the data, add the lagged data, and turn into ts
+		lake_r = make.flashiness.object( lake_new_use , rn_new, lags)
+
+		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
+		# Those are what are fit here.
+		# Use bam() (instead of gam()) from mgcv because it is designed for 
+		# large data sets.
+
+		# lake_models[[n]] = bam( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
+		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+
+		lake_models[[n]]$gam = bam( as.formula(model_form[[n]]), data=lake_r )
+		lake_models[[n]]$ar = ar_mod
+
+
+	}
+
+	return(lake_models)
+
+}
+
+
+##############################################################
+# Wrap the model fitting in a function that can be called
+# by global.R and server.R. This version uses GAMM to fit 
+# the AR correlation structure
+##############################################################
+fitGAM_ar = function( lake_data, model_form){ 
+
+	n_lakes = length(model_form)
+	#Store fitted models
+	lake_models2 = vector("list", n_lakes)
+
+	#Loop over lakes and fit models. Assuming that best-fit models have 
+	#already been determined by AIC and GCV. 
+	for(n in 1:n_lakes){ 
+
+		# Use the residuals from the GARCH model so that the trends in variance are
+		# removed. Note, this version only fits the GARCH part because the AR will be
+		# fit by the GAM: 
+
+		lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
+					 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
+
+		# New lake-level time series based on residuals
+		lake_new=as.matrix(lake_gfit1@residuals)
+		
 		#Get the AR order: 
 		ar_ord = ar(lake_gfit1@residuals)$order
 		#phi = unname(intervals(m$lme, which = "var-cov")$corStruct[, 2])
@@ -281,10 +338,13 @@ fitGAM_ar = function( lake_data, model_form){
 		# Use bam() (instead of gam()) from mgcv because it is designed for 
 		# large data sets.
 
-		# lake_models[[n]] = bam( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
+		lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML",
+			correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+
+		# lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
 		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
 
-		lake_models3 [[n]] = bam( as.formula(model_form[[n]]), data=lake_r )
+		lake_models2 [[n]] = bam( as.formula(model_form[[n]]), data=lake_r )
 
 
 	}
@@ -307,6 +367,7 @@ for (a in 1:no.sm.vars){
 return (names.list)
 
 }
+
 ##############################################################
 # GAM prediction with autoregression
 #
