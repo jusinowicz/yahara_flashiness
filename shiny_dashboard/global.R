@@ -282,7 +282,7 @@ updateModel = function (lake_data, model_form){
       models_Vp[[n]] = new_models[[n]]$gam$Vp
     }
 
-    save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
+    #save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
     save(file = "lakeGAMsfull.var", lake_models ) #Too big? :(
 
 
@@ -368,10 +368,10 @@ predictFlashGAM = function(lake_data, fut_precip){
 
         pt = predict(lake_models[[n]]$gam, newdata=lt_use,se.fit=TRUE, type ="response")
         ll_ar = ar(ld_use$level)
-        ll_tmp1 = as.matrix(predict(ll_ar, n.ahead = 1)$pred)
+        ll_tmp1 = predict(ll_ar, n.ahead = 1, se.fit=TRUE)
 
-        pr_tmp[t,3] =pt$fit[1] + ll_tmp1[1]
-        pr_tmp[t,4] = pt$se[1]
+        pr_tmp[t,3] =pt$fit[1] + ll_tmp1$pred[1]
+        pr_tmp[t,4] = pt$se[1] + ll_tmp1$se[1]
 
         #Now update the lags in lt_use with data for this day, 
         #but don't do this for n_days
@@ -392,213 +392,94 @@ predictFlashGAM = function(lake_data, fut_precip){
   
     }
 
-
-}
-
-###############################################################################
-# NOT IMPLEMENTED: 
-# predictFlashGAM_LP uses the Lp Matrix of a fitted GAM to predict
-#
-#This is the version of predictFlashGAM that would be used if the model 
-#produced in the fitting process was too massive to store and recall
-#efficiently from memory. 
-###############################################################################
-
-predictFlashGAM_LP = function(lake_data, fut_precip){
-
-    #Where the fitted model coefficients and Lp matrix live
-    model_files = list.files("./")
-    model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
-
-    #Which are the model files? 
-    model_files = model_files[model_true == TRUE ]
-    n_files = length(model_files)
-    #Loop and load the files 
-    for ( n in 1:n_files ){ 
-      load(paste(model_files[n]) )
-    }
-
-    #How many days are we forecasting? 
-    n_days = dim(fut_precip)[1]
-
-    #Most current time step
-    ntime = dim(lake_data[[1]])[1]
-
-    #This section will break down the formula and extract two 
-    #key pieces of info: the number of smooth terms and the 
-    #number of knots for each 
-    model_clean = vector("character",n_lakes)
-    model_ks = vector("list",n_lakes)
-
-    #a1 = ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
-    
-    # fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
-
-    for (n in 1:n_lakes){ 
-
-      #AR order of rain and lake level
-      ar_lake = grep("level", (colnames(lake_data[[n]])))
-      ar_lake = ar_lake[-1]
-      ar_rain = grep("rn", (colnames(lake_data[[n]]))) 
-      ar_rain = ar_rain[-1]
-      l_arl = length (ar_lake)
-      l_arr = length (ar_rain)
-
-      #Which AR is larger? 
-      if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
-      
-      #Get the last section of data table for lags
-      lt = tail(lake_data[[n]], l_arl)
- 
-      #The start of the new data set for prediction with 
-      #the first new day
-      lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
-        fut_precip[1,2],
-        lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
-      colnames(lt_tmp) = colnames(lt)
-      lt_new = rbind( lt,lt_tmp) 
-      lt_use = lt_new[, -2]
-
-      #Figure out the smooth terms 
-      n_terms = length(model_smooths[[n]])
-      all_ks = colnames(models_Xp[[n]])
-      model_ks[[n]] = matrix(0,n_terms,1)
-
-      for(t in 1:n_terms){
-
-        sm_tmp = model_smooths[[n]][t] 
-        ks_tmp = grepl(
-        glob2rx(paste(sm_tmp,".*",sep="")), 
-        all_ks)
-        model_ks[[n]][t] = sum(ks_tmp) 
-
-      }
-
-      n_smooth = sum(model_ks[[n]])
-
-      #Find the average distance between samples:
-      ldiffs = apply(lake_data[[n]],2,diff)  
-      m_ldiff = apply(abs(ldiffs), 2, mean,na.rm=T) 
-      
- 
-      
-      #Do each time-step sequentially: 
-      for (f in 1:n_days){
-
-        x0 = 1         ## intercept column
-
-        #Loop through smooth terms:
-        for ( j in 0:(n_terms-1) ) {
-          dx = m_ldiff[j+2]
-          #Get the set of columns for the smooth
-          if(j == 0) { cst = 0 }else{
-            cst = sum(model_ks[[n]][1:(j)])
-          }
-          lcols = 1+cst + 1:(model_ks[[n]][j+1])
-          #Find the relevant rows
-          lrows = floor(lt_use[ (l_arl+f),j+2]/dx) 
-          w1 = (lt_use[(l_arl+f), j+2]-lrows*dx)/dx ## interpolation weights
-          ## find approx. predict matrix row portion, by interpolation
-          x0 = c(x0,models_Xp[[n]][lrows+2,lcols]*w1 + models_Xp[[n]][lrows+1,lcols]*(1-w1))
-        }
-
-        dim(x0)=c(1,dim(models_Xp[[n]])[2]) 
-        fv = x0%*%models_coef[[n]]   ## evaluate and add offset
-        se = sqrt(x0%*%models_Vp[[n]]%*%t(x0)) ## get standard error
-
-
-
-   }
-}
+    return(pred_lakes)
 
 }
 
 
 
+# # An empty prototype of the data frame we want to create
+# prototype <- data.frame(date = character(), time = character(),
+#   size = numeric(), r_version = character(), r_arch = character(),
+#   r_os = character(), package = character(), version = character(),
+#   country = character(), ip_id = character(), received = numeric())
 
+# # Connects to streaming log data for cran.rstudio.com and
+# # returns a reactive expression that serves up the cumulative
+# # results as a data frame
+# packageStream <- function(session) {
+#   # Connect to data source
+#   sock <- socketConnection("cransim.rstudio.com", 6789, blocking = FALSE, open = "r")
+#   # Clean up when session is over
+#   session$onSessionEnded(function() {
+#     close(sock)
+#   })
 
-# An empty prototype of the data frame we want to create
-prototype <- data.frame(date = character(), time = character(),
-  size = numeric(), r_version = character(), r_arch = character(),
-  r_os = character(), package = character(), version = character(),
-  country = character(), ip_id = character(), received = numeric())
+#   # Returns new lines
+#   newLines <- reactive({
+#     invalidateLater(1000, session)
+#     readLines(sock)
+#   })
 
-# Connects to streaming log data for cran.rstudio.com and
-# returns a reactive expression that serves up the cumulative
-# results as a data frame
-packageStream <- function(session) {
-  # Connect to data source
-  sock <- socketConnection("cransim.rstudio.com", 6789, blocking = FALSE, open = "r")
-  # Clean up when session is over
-  session$onSessionEnded(function() {
-    close(sock)
-  })
+#   # Parses newLines() into data frame
+#   reactive({
+#     if (length(newLines()) == 0)
+#       return()
+#     read.csv(textConnection(newLines()), header=FALSE, stringsAsFactors=FALSE,
+#       col.names = names(prototype)
+#     ) %>% mutate(received = as.numeric(Sys.time()))
+#   })
+# }
 
-  # Returns new lines
-  newLines <- reactive({
-    invalidateLater(1000, session)
-    readLines(sock)
-  })
+# # Accumulates pkgStream rows over time; throws out any older than timeWindow
+# # (assuming the presence of a "received" field)
+# packageData <- function(pkgStream, timeWindow) {
+#   shinySignals::reducePast(pkgStream, function(memo, value) {
+#     rbind(memo, value) %>%
+#       filter(received > as.numeric(Sys.time()) - timeWindow)
+#   }, prototype)
+# }
 
-  # Parses newLines() into data frame
-  reactive({
-    if (length(newLines()) == 0)
-      return()
-    read.csv(textConnection(newLines()), header=FALSE, stringsAsFactors=FALSE,
-      col.names = names(prototype)
-    ) %>% mutate(received = as.numeric(Sys.time()))
-  })
-}
+# # Count the total nrows of pkgStream
+# downloadCount <- function(pkgStream) {
+#   shinySignals::reducePast(pkgStream, function(memo, df) {
+#     if (is.null(df))
+#       return(memo)
+#     memo + nrow(df)
+#   }, 0)
+# }
 
-# Accumulates pkgStream rows over time; throws out any older than timeWindow
-# (assuming the presence of a "received" field)
-packageData <- function(pkgStream, timeWindow) {
-  shinySignals::reducePast(pkgStream, function(memo, value) {
-    rbind(memo, value) %>%
-      filter(received > as.numeric(Sys.time()) - timeWindow)
-  }, prototype)
-}
-
-# Count the total nrows of pkgStream
-downloadCount <- function(pkgStream) {
-  shinySignals::reducePast(pkgStream, function(memo, df) {
-    if (is.null(df))
-      return(memo)
-    memo + nrow(df)
-  }, 0)
-}
-
-# Use a bloom filter to probabilistically track the number of unique
-# users we have seen; using bloom filter means we will not have a
-# perfectly accurate count, but the memory usage will be bounded.
-userCount <- function(pkgStream) {
-  # These parameters estimate that with 5000 unique users added to
-  # the filter, we'll have a 1% chance of false positive on the next
-  # user to be queried.
-  bloomFilter <- BloomFilter$new(5000, 0.01)
-  total <- 0
-  reactive({
-    df <- pkgStream()
-    if (!is.null(df) && nrow(df) > 0) {
-      # ip_id is only unique on a per-day basis. To make them unique
-      # across days, include the date. And call unique() to make sure
-      # we don't double-count dupes in the current data frame.
-      ids <- paste(df$date, df$ip_id) %>% unique()
-      # Get indices of IDs we haven't seen before
-      newIds <- !sapply(ids, bloomFilter$has)
-      # Add the count of new IDs
-      total <<- total + length(newIds)
-      # Add the new IDs so we know for next time
-      sapply(ids[newIds], bloomFilter$set)
-    }
-    total
-  })
-}
+# # Use a bloom filter to probabilistically track the number of unique
+# # users we have seen; using bloom filter means we will not have a
+# # perfectly accurate count, but the memory usage will be bounded.
+# userCount <- function(pkgStream) {
+#   # These parameters estimate that with 5000 unique users added to
+#   # the filter, we'll have a 1% chance of false positive on the next
+#   # user to be queried.
+#   bloomFilter <- BloomFilter$new(5000, 0.01)
+#   total <- 0
+#   reactive({
+#     df <- pkgStream()
+#     if (!is.null(df) && nrow(df) > 0) {
+#       # ip_id is only unique on a per-day basis. To make them unique
+#       # across days, include the date. And call unique() to make sure
+#       # we don't double-count dupes in the current data frame.
+#       ids <- paste(df$date, df$ip_id) %>% unique()
+#       # Get indices of IDs we haven't seen before
+#       newIds <- !sapply(ids, bloomFilter$has)
+#       # Add the count of new IDs
+#       total <<- total + length(newIds)
+#       # Add the new IDs so we know for next time
+#       sapply(ids[newIds], bloomFilter$set)
+#     }
+#     total
+#   })
+# }
 
 
 
-    { "keys": ["ctrl+shift+b"], "command": "toggle_terminus_panel" },
-      {
-      "keys": ["ctrl+shift+enter"],
-      "command": "send_selection_to_terminus"
-    }
+#     { "keys": ["ctrl+shift+b"], "command": "toggle_terminus_panel" },
+#       {
+#       "keys": ["ctrl+shift+enter"],
+#       "command": "send_selection_to_terminus"
+#     }

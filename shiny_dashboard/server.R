@@ -79,79 +79,118 @@ function(input, output) {
 
   #Section 1: Value Boxes
  
-  #The maximum rainfall in the upcoming days   
-  output$max_rain = max(fut_precip$rain)
-
-
-  #Section 2: Forecast
-  output$max_rain <- renderValueBox({
-    # max_rain is the highest forecast rainfall for a single day
-    elapsed <- as.numeric(Sys.time()) - startTime
-    downloadRate <- nrow(pkgData()) / min(maxAgeSecs, elapsed)
+  #The maximum rainfall in the upcoming days 
+  output$max_rain = renderValueBox({
+    mr = max(fut_precip$rain)
 
     valueBox(
-      value = formatC(downloadRate, digits = 1, format = "f"),
-      subtitle = "Downloads per sec (last 5 min)",
+      value = formatC(mr, digits = 1, format = "f"),
+      subtitle = "Peak 7-day rainfall (in)",
       icon = icon("area-chart"),
-      color = if (downloadRate >= input$rateThreshold) "yellow" else "aqua"
+      color = aqua #if (mr >= year10) "yellow" else "aqua"
     )
-  })
+  })  
 
-  output$count <- renderValueBox({
-    valueBox(
-      value = dlCount(),
-      subtitle = "Total downloads",
-      icon = icon("download")
-    )
-  })
+    #The peak lake-level 
+    output$max_peak_men = renderValueBox({
+      mpm = max(pred_lakes[[1]]$level)
 
-  output$users <- renderValueBox({
-    valueBox(
-      usrCount(),
-      "Unique users",
-      icon = icon("users")
-    )
-  })
+      valueBox(
+        value = formatC(mpm, digits = 1, format = "f"),
+        subtitle = "Peak 7-day lake (ft)",
+        icon = icon("area-chart"),
+        color = aqua #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+ 
+    #The confidence interval 
+    output$pred_con_men = renderValueBox({
+      #Get the max from the time-series
+      mpm = max(pred_lakes[[1]]$level)
+      #Get its se
+      se_men  = pred_lakes[[1]]$se[which(pred_lakes[[1]]$level == mpm)]
+      #95% CIs 
+      pcmen = 1.96*se_men
+      
+      valueBox(
+        value = formatC(pcmen, digits = 1, format = "f"),
+        subtitle = "95% CI",
+        icon = icon("area-chart"),
+        color = aqua #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+ 
 
-  output$packagePlot <- renderBubbles({
-    if (nrow(pkgData()) == 0)
-      return()
+  # #Section 2: Forecast
+  # output$max_rain <- renderValueBox({
+  #   # max_rain is the highest forecast rainfall for a single day
+  #   elapsed <- as.numeric(Sys.time()) - startTime
+  #   downloadRate <- nrow(pkgData()) / min(maxAgeSecs, elapsed)
 
-    order <- unique(pkgData()$package)
-    df <- pkgData() %>%
-      group_by(package) %>%
-      tally() %>%
-      arrange(desc(n), tolower(package)) %>%
-      # Just show the top 60, otherwise it gets hard to see
-      head(60)
+  #   valueBox(
+  #     value = formatC(downloadRate, digits = 1, format = "f"),
+  #     subtitle = "Downloads per sec (last 5 min)",
+  #     icon = icon("area-chart"),
+  #     color = if (downloadRate >= input$rateThreshold) "yellow" else "aqua"
+  #   )
+  # })
 
-    bubbles(df$n, df$package, key = df$package)
-  })
+  # output$count <- renderValueBox({
+  #   valueBox(
+  #     value = dlCount(),
+  #     subtitle = "Total downloads",
+  #     icon = icon("download")
+  #   )
+  # })
 
-  output$packageTable <- renderTable({
-    pkgData() %>%
-      group_by(package) %>%
-      tally() %>%
-      arrange(desc(n), tolower(package)) %>%
-      mutate(percentage = n / nrow(pkgData()) * 100) %>%
-      select("Package name" = package, "% of downloads" = percentage) %>%
-      as.data.frame() %>%
-      head(15)
-  }, digits = 1)
+  # output$users <- renderValueBox({
+  #   valueBox(
+  #     usrCount(),
+  #     "Unique users",
+  #     icon = icon("users")
+  #   )
+  # })
 
-  output$downloadCsv <- downloadHandler(
-    filename = "cranlog.csv",
-    content = function(file) {
-      write.csv(pkgData(), file)
-    },
-    contentType = "text/csv"
-  )
+  # output$packagePlot <- renderBubbles({
+  #   if (nrow(pkgData()) == 0)
+  #     return()
 
-  output$rawtable <- renderPrint({
-    orig <- options(width = 1000)
-    print(tail(pkgData(), input$maxrows), row.names = FALSE)
-    options(orig)
-  })
+  #   order <- unique(pkgData()$package)
+  #   df <- pkgData() %>%
+  #     group_by(package) %>%
+  #     tally() %>%
+  #     arrange(desc(n), tolower(package)) %>%
+  #     # Just show the top 60, otherwise it gets hard to see
+  #     head(60)
+
+  #   bubbles(df$n, df$package, key = df$package)
+  # })
+
+  # output$packageTable <- renderTable({
+  #   pkgData() %>%
+  #     group_by(package) %>%
+  #     tally() %>%
+  #     arrange(desc(n), tolower(package)) %>%
+  #     mutate(percentage = n / nrow(pkgData()) * 100) %>%
+  #     select("Package name" = package, "% of downloads" = percentage) %>%
+  #     as.data.frame() %>%
+  #     head(15)
+  # }, digits = 1)
+
+  # output$downloadCsv <- downloadHandler(
+  #   filename = "cranlog.csv",
+  #   content = function(file) {
+  #     write.csv(pkgData(), file)
+  #   },
+  #   contentType = "text/csv"
+  # )
+
+  # output$rawtable <- renderPrint({
+  #   orig <- options(width = 1000)
+  #   print(tail(pkgData(), input$maxrows), row.names = FALSE)
+  #   options(orig)
+  # })
+  
 }
 
 

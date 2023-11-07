@@ -246,3 +246,192 @@ predictFlashGAM = function(lake_data, fut_precip){
         }else{   }
       
       }
+
+
+
+      #Version 2: Use ar() to predict just the lake level then
+      #a normal predict() using the interpolated future lake
+      #level 
+      ll_ar = ar(lake_data[[n]]$level)
+      ll_tmp1 = as.matrix(predict(ll_ar, n.ahead = n_days)$pred)
+      
+      #Now append this to a larger data set to make all of the lags:       
+      ltr = tail(lake_data[[n]], l_arr)
+      #Look for an NA in most recent rn, this happens
+      if(sum(is.na(ltr$rn)) > 0){  
+        ltr$rn[is.na(ltr$rn)] = mean(lt$rn,na.rm=T)
+      }
+
+      #Get just the level and rn data, then make the lags
+      ll_tmp2 = data.frame(level=c(ltr$level, ll_tmp1))
+      rn_tmp = data.frame(rn = c(ltr$rn,fut_precip$rn))
+      ll_ar_data = make.flashiness.object(ll_tmp2,rn_tmp,lags, auto=F, orders = l_arl )
+
+      #Only want the last n_days of this for prediction
+      lt_use = tail(ll_ar_data, n_days)
+      pt = predict(lake_models4[[n]], newdata=lt_use,se.fit=TRUE)
+      #pt = predict(lake_models[[n]], newdata=lake_data2[[n]][t1:t2,],se.fit=TRUE)
+
+
+      pred_lakes_ar[[n]] = data.frame(time = (ntime+1):(ntime+n_days) , rn = lt_use$rn, 
+        level = c(pt$fit)+c(ll_tmp1), se = pt$se.fit )
+       
+      pt2= data.frame(time = (ntime+1):(ntime+n_days) , rn = lt_use$rn, 
+        level = pt$fit, se = pt$se.fit )
+
+      #Version 3: First predict the lake level, then the AR. 
+      #Only want the last n_days of this for prediction
+
+      #Get just the level and rn data, then make the lags
+      ll_tmp2 = data.frame(level=c(ltr$level, ll_tmp1))
+      rn_tmp = data.frame(rn = c(ltr$rn,fut_precip$rn))
+      ll_ar_data = make.flashiness.object(ll_tmp2,rn_tmp,lags, auto=F, orders = l_arl )
+
+      lt_use = tail(ll_ar_data, n_days)
+      pt = predict(lake_models4[[n]], newdata=lt_use,se.fit=TRUE)
+
+      Use ar() to predict just the lake level then
+      #a normal predict() using the interpolated future lake
+      #level 
+      ll_ar = ar(lake_data[[n]]$level)
+      ll_tmp1 = as.matrix(predict(ll_ar, n.ahead = n_days)$pred)
+      
+      #Now append this to a larger data set to make all of the lags:       
+      ltr = tail(lake_data[[n]], l_arr)
+      #Look for an NA in most recent rn, this happens
+      if(sum(is.na(ltr$rn)) > 0){  
+        ltr$rn[is.na(ltr$rn)] = mean(lt$rn,na.rm=T)
+      }
+
+
+     
+      #pt = predict(lake_models[[n]], newdata=lake_data2[[n]][t1:t2,],se.fit=TRUE)
+
+
+      pred_lakes_ar[[n]] = data.frame(time = (ntime+1):(ntime+n_days) , rn = lt_use$rn, 
+        level = c(pt$fit)+c(ll_tmp1), se = pt$se.fit )
+       
+      pt2= data.frame(time = (ntime+1):(ntime+n_days) , rn = lt_use$rn, 
+        level = pt$fit, se = pt$se.fit )
+
+
+      
+###############################################################################
+# NOT IMPLEMENTED: 
+# predictFlashGAM_LP uses the Lp Matrix of a fitted GAM to predict
+#
+#This is the version of predictFlashGAM that would be used if the model 
+#produced in the fitting process was too massive to store and recall
+#efficiently from memory. 
+###############################################################################
+
+predictFlashGAM_LP = function(lake_data, fut_precip){
+
+    #Where the fitted model coefficients and Lp matrix live
+    model_files = list.files("./")
+    model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
+
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      load(paste(model_files[n]) )
+    }
+
+    #How many days are we forecasting? 
+    n_days = dim(fut_precip)[1]
+
+    #Most current time step
+    ntime = dim(lake_data[[1]])[1]
+
+    #This section will break down the formula and extract two 
+    #key pieces of info: the number of smooth terms and the 
+    #number of knots for each 
+    model_clean = vector("character",n_lakes)
+    model_ks = vector("list",n_lakes)
+
+    #a1 = ts( as.matrix(fut_precip[,2]), start=real_start[[n]], frequency=freq )
+    
+    # fp_table[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
+
+    for (n in 1:n_lakes){ 
+
+      #AR order of rain and lake level
+      ar_lake = grep("level", (colnames(lake_data[[n]])))
+      ar_lake = ar_lake[-1]
+      ar_rain = grep("rn", (colnames(lake_data[[n]]))) 
+      ar_rain = ar_rain[-1]
+      l_arl = length (ar_lake)
+      l_arr = length (ar_rain)
+
+      #Which AR is larger? 
+      if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
+      
+      #Get the last section of data table for lags
+      lt = tail(lake_data[[n]], l_arl)
+ 
+      #The start of the new data set for prediction with 
+      #the first new day
+      lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
+        fut_precip[1,2],
+        lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
+      colnames(lt_tmp) = colnames(lt)
+      lt_new = rbind( lt,lt_tmp) 
+      lt_use = lt_new[, -2]
+
+      #Figure out the smooth terms 
+      n_terms = length(model_smooths[[n]])
+      all_ks = colnames(models_Xp[[n]])
+      model_ks[[n]] = matrix(0,n_terms,1)
+
+      for(t in 1:n_terms){
+
+        sm_tmp = model_smooths[[n]][t] 
+        ks_tmp = grepl(
+        glob2rx(paste(sm_tmp,".*",sep="")), 
+        all_ks)
+        model_ks[[n]][t] = sum(ks_tmp) 
+
+      }
+
+      n_smooth = sum(model_ks[[n]])
+
+      #Find the average distance between samples:
+      ldiffs = apply(lake_data[[n]],2,diff)  
+      m_ldiff = apply(abs(ldiffs), 2, mean,na.rm=T) 
+      
+ 
+      
+      #Do each time-step sequentially: 
+      for (f in 1:n_days){
+
+        x0 = 1         ## intercept column
+
+        #Loop through smooth terms:
+        for ( j in 0:(n_terms-1) ) {
+          dx = m_ldiff[j+2]
+          #Get the set of columns for the smooth
+          if(j == 0) { cst = 0 }else{
+            cst = sum(model_ks[[n]][1:(j)])
+          }
+          lcols = 1+cst + 1:(model_ks[[n]][j+1])
+          #Find the relevant rows
+          lrows = floor(lt_use[ (l_arl+f),j+2]/dx) 
+          w1 = (lt_use[(l_arl+f), j+2]-lrows*dx)/dx ## interpolation weights
+          ## find approx. predict matrix row portion, by interpolation
+          x0 = c(x0,models_Xp[[n]][lrows+2,lcols]*w1 + models_Xp[[n]][lrows+1,lcols]*(1-w1))
+        }
+
+        dim(x0)=c(1,dim(models_Xp[[n]])[2]) 
+        fv = x0%*%models_coef[[n]]   ## evaluate and add offset
+        se = sqrt(x0%*%models_Vp[[n]]%*%t(x0)) ## get standard error
+
+
+
+   }
+}
+
+}
+
+
