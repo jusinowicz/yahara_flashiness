@@ -97,8 +97,26 @@ ui <- dashboardPage(
 
         ),
         fluidRow(
-          # Clicking this will increment the progress amount
-          #box(width = 4, actionButton("count", "Increment progress"))
+          column(width = 3,
+            box(
+              width = 12, 
+              title = "About this graph"
+
+            )
+            # Give a more historical perspective on the data:
+          ), 
+          column(width = 9,
+            actionButton("mo32", "3 Mo"),
+            actionButton("yr12", "1 Yr"),
+            actionButton("yr32", "3 Yr"),
+            actionButton("yr102", "10 Yr"), 
+            box(
+              width = 12,
+              plotOutput("full_plot2")
+            )
+            # Give a more historical perspective on the data:
+          ), 
+
         )
       )
 

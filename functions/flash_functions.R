@@ -13,8 +13,7 @@
 #
 #See Usinowicz et al. 2016 for more motivation and background 
 #on this work.
-library(shiny)
-library(tidyverse)
+
 library(lubridate)
 library(mgcv)
 library(fGarch) #For GARCH models
@@ -36,7 +35,7 @@ library(fGarch) #For GARCH models
 
 remove.days=function(variable1, date.start, w.yes=TRUE, winter=c(334,120)  ){
 
-	length.var=length(variable1)
+	length.var=dim(variable1)[1]
 	# Make a list of the years and identify leap years.
 	nyears = floor(length.var/365)
 	years = date.start:(date.start+nyears)
@@ -53,7 +52,7 @@ remove.days=function(variable1, date.start, w.yes=TRUE, winter=c(334,120)  ){
 
 			}
 
-	variable1 = variable1[-rd]
+	variable1 = variable1[-rd,]
 
 	# Test the order of the winter dates provided then remove the winter
 	# days. The first option corresponds to a wrapped date, as in the 
@@ -66,20 +65,23 @@ remove.days=function(variable1, date.start, w.yes=TRUE, winter=c(334,120)  ){
 		r2 = 1:winter[2]
 		freq = 365 - length(c(r1,r2))
 		for ( y in 1:nyears) { rmove = c(rmove, -(365*(y-1)+c(r1,r2)))}
-		new.var1 = variable1[ rmove ]
+		new.var1 = variable1[ rmove, ]
 						} else { 
 		
 		r1 = winter[1]:winter[2]
 		freq = 365 - length(r1)
 		for ( y in 1:nyears) { rmove = c(rmove, -(365*(y-1)+r1))}
-		new.var1 = variable1[ rmove ]	
+		new.var1 = variable1[ rmove ,]	
 		}
 	
-		return(ts( as.matrix(new.var1), start=date.start, frequency=freq ))
+		#return(ts( as.matrix(new.var1), start=date.start, frequency=freq ))
+		return(new.var1)
  	} else { 
 
  		new.var1 = variable1
- 		return(ts( as.matrix(new.var1), start=date.start, frequency=365 ))
+ 		#return(ts( as.matrix(new.var1), start=date.start, frequency=365 ))
+		return(new.var1)
+
 	}
  	
 
@@ -290,68 +292,157 @@ fitGAM_ar = function( lake_data, model_form){
 
 }
 
-
 ##############################################################
-# Wrap the model fitting in a function that can be called
-# by global.R and server.R. This version uses GAMM to fit 
-# the AR correlation structure
+# Wrap tensorflow and the DNN model fitting in a function 
+# that can be called by global.R and server.R. This version 
+# uses keras to normalize, create 2 hidden layers, relu, adam. 
 ##############################################################
-fitGAM_ar = function( lake_data, model_form){ 
 
-	n_lakes = length(model_form)
+fitDNN = function(lake_data ){
+
 	#Store fitted models
-	lake_models2 = vector("list", n_lakes)
+	lake_models = vector("list", n_lakes)
 
-	#Loop over lakes and fit models. Assuming that best-fit models have 
-	#already been determined by AIC and GCV. 
+	#Performance and prediction 
+	pred_train = vector("list", n_lakes)
+	pred_test = vector("list", n_lakes)
+
+	#This function is for tensorflow to create a DNN. This is 
+	#analogous to the "model form"  
+	build_and_compile_model = function(norm) {
+	  model = keras_model_sequential() %>%
+	    norm() %>%
+	    layer_dense(64, activation = 'relu') %>%
+	    layer_dense(64, activation = 'relu') %>%
+	    layer_dense(1)
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam(0.001)
+	  )
+
+	  model
+	}
+
 	for(n in 1:n_lakes){ 
-
-		# Use the residuals from the GARCH model so that the trends in variance are
-		# removed. Note, this version only fits the GARCH part because the AR will be
-		# fit by the GAM: 
-
-		lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
-					 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
-
-		# New lake-level time series based on residuals
-		lake_new=as.matrix(lake_gfit1@residuals)
-		
-		#Get the AR order: 
-		ar_ord = ar(lake_gfit1@residuals)$order
-		#phi = unname(intervals(m$lme, which = "var-cov")$corStruct[, 2])
-
-		#Append this to the model description: 
-		mf = paste(model_form[[n]], ", correlation = corARMA(value = 
-			phi, fixed =TRUE, form = ~ 1 | time, p =", ar_ord, ")")
 
 		# New time series after removing NAs in the rain
 		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
-		lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
+		lake_new = as.matrix(lake_data[[n]]$level[!is.na(lake_data[[n]][,"rn",drop=T])])
 		colnames(rn_new) = "rn"
 		colnames(lake_new) = "level"
 
 		#Combine all of the data, add the lagged data, and turn into ts
 		lake_r = make.flashiness.object( lake_new , rn_new, lags)
+		lake_r = na.omit(lake_r) #No NAs for RF models
 
-		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
-		# Those are what are fit here.
-		# Use bam() (instead of gam()) from mgcv because it is designed for 
-		# large data sets.
+		#Split data for training and testing: 
+		ind = base::sample(2, nrow(lake_r), replace = TRUE, prob = c(0.9, 0.1))
+		train = lake_r [ind==1,]
+		test = lake_r [ind==2,]
 
-		lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML",
-			correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+		#Split the labels from the features: 
+		train_f = select(train, -level)
+		test_f = select(test, -level)
 
-		# lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
-		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+		train_l = select(train, level)
+		test_l = select(test, level)
 
-		lake_models2 [[n]] = bam( as.formula(model_form[[n]]), data=lake_r )
+		#Normalize the data:
+		#(This is an alternative approach to using MinMaxScaler with 
+		#fit_transform and transform)
+		normalizer = layer_normalization (axis = -1L)
+		adapt(normalizer, as.matrix(train_f))
+
+		#Build the model
+		lake_models[[n]]  = build_and_compile_model(normalizer)
+		#summary(dnn_model)
+
+		#Fit the model to training data
+		pred_train[[n]] = lake_models[[n]]  %>% fit(
+		  as.matrix(train_f),
+		  as.matrix(train_l),
+		  validation_split = 0.2,
+		  verbose = 0,
+		  epochs = 100
+		)
+
+		#Evaluate the performance on test data
+		# pred_test[[n]] = lake_models[[n]]  %>% evaluate(
+		#   as.matrix(test_f),
+		#   as.matrix(test_l),
+		#   verbose = 0
+		# )
 
 
 	}
 
-	return(lake_models)
+	return(pred_train)
 
 }
+
+
+# ##############################################################
+# # Wrap the model fitting in a function that can be called
+# # by global.R and server.R. This version uses GAMM to fit 
+# # the AR correlation structure
+# ##############################################################
+# fitGAM_ar = function( lake_data, model_form){ 
+
+# 	n_lakes = length(model_form)
+# 	#Store fitted models
+# 	lake_models2 = vector("list", n_lakes)
+
+# 	#Loop over lakes and fit models. Assuming that best-fit models have 
+# 	#already been determined by AIC and GCV. 
+# 	for(n in 1:n_lakes){ 
+
+# 		# Use the residuals from the GARCH model so that the trends in variance are
+# 		# removed. Note, this version only fits the GARCH part because the AR will be
+# 		# fit by the GAM: 
+
+# 		lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
+# 					 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
+
+# 		# New lake-level time series based on residuals
+# 		lake_new=as.matrix(lake_gfit1@residuals)
+		
+# 		#Get the AR order: 
+# 		ar_ord = ar(lake_gfit1@residuals)$order
+# 		#phi = unname(intervals(m$lme, which = "var-cov")$corStruct[, 2])
+
+# 		#Append this to the model description: 
+# 		mf = paste(model_form[[n]], ", correlation = corARMA(value = 
+# 			phi, fixed =TRUE, form = ~ 1 | time, p =", ar_ord, ")")
+
+# 		# New time series after removing NAs in the rain
+# 		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
+# 		lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
+# 		colnames(rn_new) = "rn"
+# 		colnames(lake_new) = "level"
+
+# 		#Combine all of the data, add the lagged data, and turn into ts
+# 		lake_r = make.flashiness.object( lake_new , rn_new, lags)
+
+# 		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
+# 		# Those are what are fit here.
+# 		# Use bam() (instead of gam()) from mgcv because it is designed for 
+# 		# large data sets.
+
+# 		lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML",
+# 			correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+
+# 		# lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
+# 		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+
+# 		lake_models2 [[n]] = bam( as.formula(model_form[[n]]), data=lake_r )
+
+
+# 	}
+
+# 	return(lake_models)
+
+# }
 
 
 ##############################################################

@@ -8,6 +8,10 @@ library(openmeteo)
 #Stats
 library(mgcv)
 library(fGarch) #For GARCH models
+#For tensorflow:
+library(keras)
+library(tidymodels)
+library(recipes)
 #misc data processing and stats
 source("./../functions/flash_functions.R")
 
@@ -216,6 +220,10 @@ updateHistoric = function() {
 }
 
 ###############################################################################
+# GAM Section
+###############################################################################
+
+###############################################################################
 # updateModel is the function to take fit a GAM model if one does not already
 # exist. It is effectively a wrapper for the fuction fitGAM in the 
 # flash_functions.R file. It looks to see if models already exist. 
@@ -249,7 +257,7 @@ updateModel = function (lake_data, model_form){
     #We have to fit the models. We fit the AR and the GAM 
     #separately because forecasting seems to be better this way.
     #Use this function:
-    new_models = fitGAM_ar(lake_data, model_form)
+    lake_models = fitGAM_ar(lake_data, model_form)
     
     #Because these are so large when saved as a variable,
     #we don't save the variables but use the Lp matrix
@@ -283,7 +291,7 @@ updateModel = function (lake_data, model_form){
     }
 
     #save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
-    save(file = "lakeGAMsfull.var", lake_models ) #Too big? :(
+    save(file = "lakeGAMsfull.var", lake_models) #Too big? :(
 
 
   }
@@ -296,6 +304,153 @@ updateModel = function (lake_data, model_form){
 # events that have been given to it. 
 ###############################################################################
 predictFlashGAM = function(lake_data, fut_precip){
+
+    #Where the fitted model coefficients and Lp matrix live
+    model_files = list.files("./")
+    model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
+
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      load(paste(model_files[n]) )
+    }
+
+    #How many days are we forecasting? 
+    n_days = dim(fut_precip)[1]
+
+    #Most current time step
+    ntime = (tail(lake_data[[1]],1))$time
+
+    #Predicted lake levels 
+    pred_lakes = vector("list",n_lakes)
+    pred_lakes_ar = vector("list",n_lakes)
+
+    #Build the new data set for prediction and make predictions:
+    for (n in 1:n_lakes){ 
+
+      #AR order of rain and lake level
+      ar_lake = grep("level", (colnames(lake_data[[n]])))
+      ar_lake = ar_lake[-1]
+      ar_rain = grep("rn", (colnames(lake_data[[n]]))) 
+      ar_rain = ar_rain[-1]
+      l_arl = length (ar_lake)
+      l_arr = length (ar_rain)
+
+      #Which AR is larger? 
+      if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
+      
+      #Get the last section of data table for lags
+      lt = tail(lake_data[[n]], l_arl)
+      
+      #Look for an NA in most recent rn, this happens
+      if(sum(is.na(lt$rn)) > 0){  
+        lt$rn[is.na(lt$rn)] = mean(lt$rn,na.rm=T)
+      }
+
+      #Version 3: An iterative prediction approach where
+      #the AR is predicted first, then the GAM, then the 
+      #two are added. 
+
+      #The start of the new data set for prediction with 
+      #the first new day
+      lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
+        fut_precip[1,2],
+        lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
+      colnames(lt_tmp) = colnames(lt)
+      lt_new = rbind( lt,lt_tmp) 
+      
+      #Initialize new data set
+      lt_use = lt_new[l_arl+1,]
+      ld_use = lake_data[[n]]
+      lt_save = NULL
+
+      #Temporarily store predicted lake level and SE
+      pr_tmp = matrix(0, n_days, 4 )
+      pr_tmp[,1] = ntime+(1:n_days)
+      pr_tmp[,2] = fut_precip$rn
+      colnames(pr_tmp) = c("time", "rn", "level", "se")
+
+      for (t in 1:n_days){
+
+        pt = predict(lake_models[[n]]$gam, newdata=lt_use,se.fit=TRUE, type ="response")
+        ll_ar = ar(ld_use$level)
+        ll_tmp1 = predict(ll_ar, n.ahead = 1, se.fit=TRUE)
+
+        pr_tmp[t,3] =pt$fit[1] + ll_tmp1$pred[1]
+        pr_tmp[t,4] = pt$se[1] + ll_tmp1$se[1]
+
+        #Now update the lags in lt_use with data for this day, 
+        #but don't do this for n_days
+        if (t < n_days){ 
+          lt_use$level = pr_tmp[t,3] #Replace NA with prediction
+          ld_use = rbind(ld_use, lt_use)
+          lt_use = as.data.frame(c(ntime+t, NA, lt_use[1,2:(l_arl+1)],
+          fut_precip[t+1,2],
+          lt_use[1,(l_arl+3):(l_arl+2+l_arr) ] ))
+
+          colnames(lt_use) = colnames(lt)
+        }else{   }
+      
+      }
+
+
+  	pred_lakes[[n]]  = as.data.frame(pr_tmp)
+	pred_lakes[[n]]$time = fut_precip$time
+  
+    }
+
+    return(pred_lakes)
+
+}
+
+###############################################################################
+# ML Section
+###############################################################################
+
+###############################################################################
+# updateModel is the function to take fit a DNN with tensorflow if one does not 
+# already exist. It is effectively a wrapper for the tensorflow functions.
+# It looks to see if models already exist. It returns
+#
+###############################################################################
+
+updateModelDNN = function (lake_data){
+
+  #First check to see if the fitted models already exist. If they don't, 
+  #run the code to fit the models. This is time consuming! 
+  #The standard I have chosen to employ is to name stored fitted models 
+  #with suffix ".var"
+  model_files = list.files("./")
+  model_true = grepl("*DNN*.*keras|*keras.*DNN*", model_files)
+
+  #Test if thefile exists
+  if(  sum(model_true) >= 1 ){   
+    
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      load_model(paste(model_files[n]) )
+    }
+  
+  }else{ 
+
+    #We have to fit the models.This is a wrapper for keras
+    lake_modelsDNN = fitDNN(lake_data)
+    save(file = "lakeDNN1.keras", lake_modelsDNN) 
+  }
+
+}
+
+###############################################################################
+# predictFlashGAM uses the fitted GAM to predict future rain
+# It returns fitted data points with SE for the number of future precipitation 
+# events that have been given to it. 
+###############################################################################
+predictFlashDNN= function(lake_data, fut_precip){
 
     #Where the fitted model coefficients and Lp matrix live
     model_files = list.files("./")

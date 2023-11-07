@@ -46,18 +46,21 @@ server <- function(input, output) {
     #Do some processing to remove ice-on days (approximately). This 
     #function automatically removes winter days and converts data 
     #table to a timeseries (ts) object 
-    lake.tmp = remove.days(lake_data[[n]]$level, year(real_start[[n]] ) )
-    colnames(lake.tmp) = "level"
-    rn.tmp = remove.days(lake_data[[n]]$rn, year(real_start[[n]] ) )
-    colnames(rn.tmp) = "rn"
+    lake.tmp = remove.days(lake_data[[n]][,c(1,2)], year(real_start[[n]] ) )
+    #colnames(lake.tmp) = "level"
+    rn.tmp = remove.days(lake_data[[n]][,c(1,3)], year(real_start[[n]] ) )
+    #colnames(rn.tmp) = "rn"
 
     #Keep the dates
-    lake_dates[[n]] = as_date(date_decimal(as.numeric(time(lake.tmp))))
+    lake_dates[[n]] = lake.tmp$time 
+
+    #as_date(date_decimal(as.numeric(time(lake.tmp))))
 
     #This final step creates the full data object, with lags of 
     #lake level for autocorrelation and lags of rain for delayed
     #rain input. 
-    lake_data[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
+    lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level), 
+      data.frame(rn=rn.tmp$rn), lags)
   }
 
   #Get the rain forecast data:
@@ -67,7 +70,7 @@ server <- function(input, output) {
   fut_precip$rn = fut_precip$rn / 25.4 #Convert mm to inches
 
   ##############################################################
-  #PART 2: Forecasting
+  #PART 2: Forecasting with GAMs
   ##############################################################
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
@@ -76,6 +79,15 @@ server <- function(input, output) {
   #Predict the future lake-level response from the saved GAMs
   pred_lakes = predictFlashGAM(lake_data, fut_precip)
 
+  ##############################################################
+  #PART 3: Forecasting with DNN 
+  ##############################################################
+  #Check to see if the DNNs have already been fitted and saved in 
+  #a *.keras file, or if we need to fit them.
+  updateModelDNN(lake_data)
+
+  #Predict the future lake-level response from the saved DNN
+  pred_lakes_dnn = predictFlashDNN(lake_data, fut_precip )
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
@@ -175,7 +187,7 @@ server <- function(input, output) {
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
       ylab("Lake level (ft) ") +
-      xlim(low_limx$limx, current_date)
+      xlim(low_limx$limx, current_date+8)
 
    } )
 
@@ -236,6 +248,44 @@ server <- function(input, output) {
       ggtitle("Forecasted lake level") + xlab("Date")+
       ylab("Lake level (ft) ") 
    } )
+
+#Plot the historical and prediction time series
+
+  low_limx2 = reactiveValues(limx2 = current_date%m-%months(3) )
+
+  observeEvent(input$m032, {
+    low_limx2$limx2 = current_date%m-%months(3)
+  })
+
+  observeEvent(input$yr12, {
+    low_limx2$limx2 = current_date - years(1)
+  })  
+
+  observeEvent(input$yr32, {
+    low_limx2$limx2 = current_date - years(3)
+  })
+
+  observeEvent(input$yr102, {
+    low_limx2$limx2 = current_date - years(10)
+  })  
+
+
+  output$full_plot2=renderPlot({
+
+      ggplot( ) +
+      geom_line(data = lake_data[[2]], aes(x = dates, y=level) ) +
+      geom_line(data = pred_lakes[[2]], aes(x = time, y=level), col="red") +
+      geom_ribbon(data = pred_lakes[[2]], 
+        aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      ylim(1, max(lake_data[[2]]$level)+max(lake_data[[2]]$level)*.1 )+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ") +
+      xlim(low_limx2$limx2, current_date+8)
+
+   } )
+
+
 
 } ##Server function end
 
