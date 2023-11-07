@@ -1,4 +1,5 @@
 library(shiny)
+library(shinydashboard)
 library(tidyverse)
 library(lubridate)
 #Data processing
@@ -27,6 +28,9 @@ nasa_pars = c("PRECTOTCORR")
 #How long of a data set? Currently 10 years
 #real_start = list( ymd("1980-1-1"), ymd("1980-1-1")) #Too big to save
 real_start = list( ymd("2013-1-1"), ymd("2013-1-1"))
+
+#Today
+current_date = ymd( Sys.Date() )
   
 #Where the lake stage and rain data live: 
 lake_data = vector("list", n_lakes)
@@ -46,20 +50,6 @@ model_form [[2]] = "level ~
   s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
   s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
-
-
-# model_form [[1]] = "level ~ 
-#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+s(level3,bs=\"cr\",k=6)+
-#     s(level4,bs=\"cr\",k=6)+
-#     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
-#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
-#     te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
-
-# model_form [[2]] = "level ~ 
-#     s(level1,bs=\"cr\",k=6)+s(level2,bs=\"cr\",k=6)+
-#     s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
-#     s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
-#     te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 
 
@@ -94,6 +84,7 @@ updateLake = function (lake_table, start_date, current_date, site_key) {
       group_by(time) %>%
       summarise(level = mean(level, na.rm = TRUE)) %>%
       as.data.frame()
+
   return(lt_temp)
 
 }
@@ -115,6 +106,7 @@ updateRain = function (daily_rain, start_date, current_date) {
   ) %>% as.data.frame()
   rn_temp = rn_temp[,c(7,8)]
   colnames(rn_temp) = c("time", "rn")
+
   return(rn_temp)
 
 }
@@ -177,7 +169,7 @@ updateHistoric = function() {
   #Write the new files.  
 
   #For the precip first (same data for all lakes)
-  last_rain= daily_precip[nrow(daily_precip),"time"]
+  last_rain = daily_precip[nrow(daily_precip),"time"]
   if(last_rain != current_date  ){ 
     daily_precip = rbind(daily_precip,
         updateRain(daily_precip, start_date = last_rain, 
@@ -185,6 +177,10 @@ updateHistoric = function() {
     daily_precip = daily_precip[-( (nrow(daily_precip)-1):
       nrow(daily_precip)), ]
   }
+
+  #Remove date duplicates
+  daily_precip=daily_precip[!duplicated(daily_precip$time),]
+
 
   #For the lakes
   for ( n in 1:n_lakes){ 
@@ -200,6 +196,10 @@ updateHistoric = function() {
       lake_table[[n]] = lake_table[[n]][-( (nrow(lake_table[[n]])-2):
         nrow(lake_table[[n]])), ]
     }
+
+
+    #Remove duplicated dates
+  	lake_table[[n]] = lake_table[[n]][!duplicated(lake_table[[n]]$time),]
 
     lake_data[[n]] = lake_table[[n]] %>%
         inner_join(daily_precip, by = "time" ) 
@@ -387,8 +387,9 @@ predictFlashGAM = function(lake_data, fut_precip){
       
       }
 
-      pred_lakes[[n]]  = as.data.frame(pr_tmp)
 
+  	pred_lakes[[n]]  = as.data.frame(pr_tmp)
+	pred_lakes[[n]]$time = fut_precip$time
   
     }
 
@@ -396,90 +397,3 @@ predictFlashGAM = function(lake_data, fut_precip){
 
 }
 
-
-
-# # An empty prototype of the data frame we want to create
-# prototype <- data.frame(date = character(), time = character(),
-#   size = numeric(), r_version = character(), r_arch = character(),
-#   r_os = character(), package = character(), version = character(),
-#   country = character(), ip_id = character(), received = numeric())
-
-# # Connects to streaming log data for cran.rstudio.com and
-# # returns a reactive expression that serves up the cumulative
-# # results as a data frame
-# packageStream <- function(session) {
-#   # Connect to data source
-#   sock <- socketConnection("cransim.rstudio.com", 6789, blocking = FALSE, open = "r")
-#   # Clean up when session is over
-#   session$onSessionEnded(function() {
-#     close(sock)
-#   })
-
-#   # Returns new lines
-#   newLines <- reactive({
-#     invalidateLater(1000, session)
-#     readLines(sock)
-#   })
-
-#   # Parses newLines() into data frame
-#   reactive({
-#     if (length(newLines()) == 0)
-#       return()
-#     read.csv(textConnection(newLines()), header=FALSE, stringsAsFactors=FALSE,
-#       col.names = names(prototype)
-#     ) %>% mutate(received = as.numeric(Sys.time()))
-#   })
-# }
-
-# # Accumulates pkgStream rows over time; throws out any older than timeWindow
-# # (assuming the presence of a "received" field)
-# packageData <- function(pkgStream, timeWindow) {
-#   shinySignals::reducePast(pkgStream, function(memo, value) {
-#     rbind(memo, value) %>%
-#       filter(received > as.numeric(Sys.time()) - timeWindow)
-#   }, prototype)
-# }
-
-# # Count the total nrows of pkgStream
-# downloadCount <- function(pkgStream) {
-#   shinySignals::reducePast(pkgStream, function(memo, df) {
-#     if (is.null(df))
-#       return(memo)
-#     memo + nrow(df)
-#   }, 0)
-# }
-
-# # Use a bloom filter to probabilistically track the number of unique
-# # users we have seen; using bloom filter means we will not have a
-# # perfectly accurate count, but the memory usage will be bounded.
-# userCount <- function(pkgStream) {
-#   # These parameters estimate that with 5000 unique users added to
-#   # the filter, we'll have a 1% chance of false positive on the next
-#   # user to be queried.
-#   bloomFilter <- BloomFilter$new(5000, 0.01)
-#   total <- 0
-#   reactive({
-#     df <- pkgStream()
-#     if (!is.null(df) && nrow(df) > 0) {
-#       # ip_id is only unique on a per-day basis. To make them unique
-#       # across days, include the date. And call unique() to make sure
-#       # we don't double-count dupes in the current data frame.
-#       ids <- paste(df$date, df$ip_id) %>% unique()
-#       # Get indices of IDs we haven't seen before
-#       newIds <- !sapply(ids, bloomFilter$has)
-#       # Add the count of new IDs
-#       total <<- total + length(newIds)
-#       # Add the new IDs so we know for next time
-#       sapply(ids[newIds], bloomFilter$set)
-#     }
-#     total
-#   })
-# }
-
-
-
-#     { "keys": ["ctrl+shift+b"], "command": "toggle_terminus_panel" },
-#       {
-#       "keys": ["ctrl+shift+enter"],
-#       "command": "send_selection_to_terminus"
-#     }

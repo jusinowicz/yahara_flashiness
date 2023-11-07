@@ -1,5 +1,4 @@
-function(input, output) {
-
+server <- function(input, output) {
 
   ##############################################################
   #PART 1: Data processing
@@ -13,6 +12,8 @@ function(input, output) {
   daily_precip = vector("list", n_lakes)
   #Final data set
   lake_data = vector("list", n_lakes)
+  #Readable dates for plotting
+  lake_dates = vector("list", n_lakes)
 
   #Load the historic data sets
   lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
@@ -50,6 +51,9 @@ function(input, output) {
     rn.tmp = remove.days(lake_data[[n]]$rn, year(real_start[[n]] ) )
     colnames(rn.tmp) = "rn"
 
+    #Keep the dates
+    lake_dates[[n]] = as_date(date_decimal(as.numeric(time(lake.tmp))))
+
     #This final step creates the full data object, with lags of 
     #lake level for autocorrelation and lags of rain for delayed
     #rain input. 
@@ -62,7 +66,6 @@ function(input, output) {
   colnames(fut_precip) = c("time", "rn")
   fut_precip$rn = fut_precip$rn / 25.4 #Convert mm to inches
 
-
   ##############################################################
   #PART 2: Forecasting
   ##############################################################
@@ -71,40 +74,46 @@ function(input, output) {
   updateModel(lake_data,model_form)
 
   #Predict the future lake-level response from the saved GAMs
-  predictFlashGAM(lake_data, fut_precip)
+  pred_lakes = predictFlashGAM(lake_data, fut_precip)
 
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
+  #Add the readable dates back on for plotting
+  for (n in 1:n_lakes){
+    lake_data[[n]]$dates = lake_dates[[n]] 
+  }
 
-  #Section 1: Value Boxes
- 
-  #The maximum rainfall in the upcoming days 
-  output$max_rain = renderValueBox({
-    mr = max(fut_precip$rain)
+  ##############################################################
+  #Mendota
+  ##############################################################
 
-    valueBox(
+   #The maximum rainfall in the upcoming days 
+    output$max_rain = renderInfoBox({
+    mr = max(fut_precip$rn)
+
+    infoBox(
+     "Peak 7-day rainfall (in)",
       value = formatC(mr, digits = 1, format = "f"),
-      subtitle = "Peak 7-day rainfall (in)",
-      icon = icon("area-chart"),
-      color = aqua #if (mr >= year10) "yellow" else "aqua"
+      icon = icon("cloud-rain"),
+      color = "aqua" #if (mr >= year10) "yellow" else "aqua"
     )
   })  
 
     #The peak lake-level 
-    output$max_peak_men = renderValueBox({
+    output$max_peak_men = renderInfoBox({
       mpm = max(pred_lakes[[1]]$level)
 
-      valueBox(
+      infoBox(
+        "Peak 7-day lake (ft)",
         value = formatC(mpm, digits = 1, format = "f"),
-        subtitle = "Peak 7-day lake (ft)",
-        icon = icon("area-chart"),
-        color = aqua #if (mr >= year10) "yellow" else "aqua"
+        icon = icon("water"),
+        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
       )
     })  
  
     #The confidence interval 
-    output$pred_con_men = renderValueBox({
+    output$pred_con_men = renderInfoBox({
       #Get the max from the time-series
       mpm = max(pred_lakes[[1]]$level)
       #Get its se
@@ -112,85 +121,121 @@ function(input, output) {
       #95% CIs 
       pcmen = 1.96*se_men
       
-      valueBox(
+      infoBox(
+        "95% CI",
         value = formatC(pcmen, digits = 1, format = "f"),
-        subtitle = "95% CI",
-        icon = icon("area-chart"),
-        color = aqua #if (mr >= year10) "yellow" else "aqua"
+        icon = icon("chart-line"),
+        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+
+  #Plot the time series of predictions
+
+  output$pred_plot1=renderPlot({
+
+      ggplot( data = pred_lakes[[1]]) + 
+      geom_line(aes(x = time, y=level)) +
+      geom_ribbon(aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.2, 
+        max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.2)+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ") 
+   } )
+
+ #Plot the historical and prediction time series
+
+  low_limx = reactiveValues(limx = current_date - months(3) )
+
+  observeEvent(input$m03, {
+    low_limx$limx = current_date - months(3)
+  })
+
+  observeEvent(input$yr1, {
+    low_limx$limx = current_date - years(1)
+  })  
+
+  observeEvent(input$yr3, {
+    low_limx$limx = current_date - years(3)
+  })
+
+  observeEvent(input$yr10, {
+    low_limx$limx = current_date - years(10)
+  })  
+
+
+  output$full_plot1=renderPlot({
+
+      ggplot( ) +
+      geom_line(data = lake_data[[1]], aes(x = dates, y=level) ) +
+      geom_line(data = pred_lakes[[1]], aes(x = time, y=level), col="red") +
+      geom_ribbon(data = pred_lakes[[1]], 
+        aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      ylim(4, max(lake_data[[1]]$level)+max(lake_data[[1]]$level)*.2 )+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ") +
+      xlim(low_limx$limx, current_date)
+
+   } )
+
+##############################################################
+#Monona
+##############################################################
+
+ #The maximum rainfall in the upcoming days 
+    output$max_rain2 = renderInfoBox({
+    mr = max(fut_precip$rn)
+
+    infoBox(
+     "Peak 7-day rainfall (in)",
+      value = formatC(mr, digits = 1, format = "f"),
+      icon = icon("cloud-rain"),
+      color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+    )
+  })  
+
+    #The peak lake-level 
+    output$max_peak_mon = renderInfoBox({
+      mpm = max(pred_lakes[[2]]$level)
+
+      infoBox(
+        "Peak 7-day lake (ft)",
+        value = formatC(mpm, digits = 1, format = "f"),
+        icon = icon("water"),
+        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
       )
     })  
  
+    #The confidence interval 
+    output$pred_con_mon = renderInfoBox({
+      #Get the max from the time-series
+      mpm = max(pred_lakes[[2]]$level)
+      #Get its se
+      se_mon  = pred_lakes[[2]]$se[which(pred_lakes[[2]]$level == mpm)]
+      #95% CIs 
+      pcmon = 1.96*se_mon
+      
+      infoBox(
+        "95% CI",
+        value = formatC(pcmon, digits = 1, format = "f"),
+        icon = icon("chart-line"),
+        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
 
-  # #Section 2: Forecast
-  # output$max_rain <- renderValueBox({
-  #   # max_rain is the highest forecast rainfall for a single day
-  #   elapsed <- as.numeric(Sys.time()) - startTime
-  #   downloadRate <- nrow(pkgData()) / min(maxAgeSecs, elapsed)
+      #Plot the time series of predictions
 
-  #   valueBox(
-  #     value = formatC(downloadRate, digits = 1, format = "f"),
-  #     subtitle = "Downloads per sec (last 5 min)",
-  #     icon = icon("area-chart"),
-  #     color = if (downloadRate >= input$rateThreshold) "yellow" else "aqua"
-  #   )
-  # })
+  output$pred_plot2=renderPlot({
+      ggplot( data = pred_lakes[[2]]) + 
+      geom_line(aes(x = time, y=level)) +
+      geom_ribbon(aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+        ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.2, 
+        max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*.2)+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ") 
+   } )
 
-  # output$count <- renderValueBox({
-  #   valueBox(
-  #     value = dlCount(),
-  #     subtitle = "Total downloads",
-  #     icon = icon("download")
-  #   )
-  # })
-
-  # output$users <- renderValueBox({
-  #   valueBox(
-  #     usrCount(),
-  #     "Unique users",
-  #     icon = icon("users")
-  #   )
-  # })
-
-  # output$packagePlot <- renderBubbles({
-  #   if (nrow(pkgData()) == 0)
-  #     return()
-
-  #   order <- unique(pkgData()$package)
-  #   df <- pkgData() %>%
-  #     group_by(package) %>%
-  #     tally() %>%
-  #     arrange(desc(n), tolower(package)) %>%
-  #     # Just show the top 60, otherwise it gets hard to see
-  #     head(60)
-
-  #   bubbles(df$n, df$package, key = df$package)
-  # })
-
-  # output$packageTable <- renderTable({
-  #   pkgData() %>%
-  #     group_by(package) %>%
-  #     tally() %>%
-  #     arrange(desc(n), tolower(package)) %>%
-  #     mutate(percentage = n / nrow(pkgData()) * 100) %>%
-  #     select("Package name" = package, "% of downloads" = percentage) %>%
-  #     as.data.frame() %>%
-  #     head(15)
-  # }, digits = 1)
-
-  # output$downloadCsv <- downloadHandler(
-  #   filename = "cranlog.csv",
-  #   content = function(file) {
-  #     write.csv(pkgData(), file)
-  #   },
-  #   contentType = "text/csv"
-  # )
-
-  # output$rawtable <- renderPrint({
-  #   orig <- options(width = 1000)
-  #   print(tail(pkgData(), input$maxrows), row.names = FALSE)
-  #   options(orig)
-  # })
-  
-}
-
+} ##Server function end
 

@@ -1,82 +1,111 @@
-dashboardPage(
-  dashboardHeader(title = "cran.rstudio.com"),
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Yahara Flashiness"),
   dashboardSidebar(
-    # sliderInput("rateThreshold", "Warn when rate exceeds",
-    #   min = 0, max = 50, value = 3, step = 0.1
-    # ),
-    # sidebarMenu(
-    #   menuItem("Forecast", tabName = "forecast"), #dashboard
-    #   menuItem("Historical", tabName = "historical") #raw data
-    # )
+    sidebarMenu(
+      menuItem("Mendota", tabName = "Mendota"),
+      menuItem("Monona", tabName = "Monona")
+    )
   ),
   dashboardBody(
     tabItems(
       tabItem("Mendota",
         fluidRow(
-          column(3, 
+          column(width = 3,
+            # fluidRow(
+            # #Upcoming peak in rain
+            # infoBoxOutput("max_rain"),
+            # #Maximum peak in forecast
+            # infoBoxOutput("max_peak_men"),
+            # #Confidence 
+            # infoBoxOutput("pred_con_men"))
+            fluidRow(
             #Upcoming peak in rain
-            valueBoxOutput("max_rain"),
+            infoBoxOutput("max_rain",width=12) ),
+            fluidRow(
             #Maximum peak in forecast
-            valueBoxOutput("max_peak_men"),
+            infoBoxOutput("max_peak_men",width=12)),
+            fluidRow(
             #Confidence 
-            valueBoxOutput("pred_con_men")
+            infoBoxOutput("pred_con_men",width=12))
+          ),
+
+          column(width=9,
+             fluidRow(
+             # Plot the predicted values with CIs 
+              #title=h3("Forecasted lake level", 
+              #style = 'font-size:42px;'), 
+             box(
+              width = 12, 
+              plotOutput("pred_plot1") )
+            )
+          )
+
+
         ),
-
-          #  column(9, 
-          #   plotOutput("flash_fore")
-          # )
-
-        ),
-
         fluidRow(
-          # box(
-          #   width = 8, status = "info", solidHeader = TRUE,
-          #   title = "Popularity by package (last 5 min)",
-          #   bubblesOutput("packagePlot", width = "100%", height = 600)
-          # ),
-          # box(
-          #   width = 4, status = "info",
-          #   title = "Top packages (last 5 min)",
-          #   tableOutput("packageTable")
-          # )
+          column(width = 3,
+            box(
+              width = 12, 
+              title = "About this graph"
+
+            )
+            # Give a more historical perspective on the data:
+          ), 
+          column(width = 9,
+            actionButton("mo3", "3 Mo"),
+            actionButton("yr1", "1 Yr"),
+            actionButton("yr3", "3 Yr"),
+            actionButton("yr10", "10 Yr"), 
+            box(
+              width = 12,
+              plotOutput("full_plot1")
+            )
+            # Give a more historical perspective on the data:
+          ), 
+
         )
       ),
-      
-       tabItem("Monona",
+      tabItem("Monona",
         fluidRow(
-        #   column(3, 
-        #     #Upcoming peak in rain
-        #     valueBoxOutput("max_rain"),
-        #     #Maximum peak in forecast
-        #     valueBoxOutput("max_peak"),
-        #     #Prediction accuracy 
-        #     valueBoxOutput("pred_acc")
-        # ),
+          column(width = 3,
+            # fluidRow(
+            # #Upcoming peak in rain
+            # infoBoxOutput("max_rain"),
+            # #Maximum peak in forecast
+            # infoBoxOutput("max_peak_men"),
+            # #Confidence 
+            # infoBoxOutput("pred_con_men"))
+            fluidRow(
+            #Upcoming peak in rain
+            infoBoxOutput("max_rain2",width=12) ),
+            fluidRow(
+            #Maximum peak in forecast
+            infoBoxOutput("max_peak_mon",width=12)),
+            fluidRow(
+            #Confidence 
+            infoBoxOutput("pred_con_mon",width=12))
+          ),
 
-        #    column(9, 
-        #     plotOutput("flash_fore")
-        # )
+          column(width=9,
+             fluidRow(
+             # Plot the predicted values with CIs 
+             box(width = 12, plotOutput("pred_plot2") )
+            )
+          )
+
 
         ),
         fluidRow(
-          # box(
-          #   width = 8, status = "info", solidHeader = TRUE,
-          #   title = "Popularity by package (last 5 min)",
-          #   bubblesOutput("packagePlot", width = "100%", height = 600)
-          # ),
-          # box(
-          #   width = 4, status = "info",
-          #   title = "Top packages (last 5 min)",
-          #   tableOutput("packageTable")
-          # )
+          # Clicking this will increment the progress amount
+          #box(width = 4, actionButton("count", "Increment progress"))
         )
-      ),
-      # tabItem("historical",
-      #   # numericInput("maxrows", "Rows to show", 25),
-      #   # verbatimTextOutput("rawtable"),
-      #   # downloadButton("downloadCsv", "Download as CSV")
-      # )
+      )
+
     )
   )
+
 )
+
+
 
