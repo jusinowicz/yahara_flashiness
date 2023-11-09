@@ -26,7 +26,7 @@ library(lubridate)
 library(rvest) #To parse table from webpage
 library(nasapower) #API for NASA data, for precipitation
 library(GGally)
-source("./functions/flash_functions.R")
+source("./../functions/flash_functions.R")
 #For tensorflow:
 library(keras)
 library(tidymodels)
@@ -45,6 +45,11 @@ current_date = Sys.Date() #Current date. Could be set to other
 yl1 = 15
 start_date = current_date  -  years(yl1)
 
+#Where the historical data should start
+#How long of a data set? Currently 10 years
+#real_start = list( ymd("1980-1-1"), ymd("1980-1-1")) #Too big to save
+real_start = list( ymd("2013-1-1"), ymd("2013-1-1"))
+
 #USGS site keys. Currently includes Mendota and Monona
 site_keys = c("05428000", "05429000")
 
@@ -55,10 +60,18 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 nasa_pars = c("PRECTOTCORR")
 
 #Lags in rain and lake-level data
-lags = 10
+#Note -- the wording around what lags are seems to be somewhat
+#different in literature/examples. In ML literature lags seems 
+#to include current timestep + past ts. So here, we pass a lags
+#of x, and in the ML data objects this will result in dimension
+#x+1
+lags = 6
 
 #The days that we count as winter to exclude ice-on days
 winter=c(334,120)
+
+#Number of lakes: currently 2, Mendota and Monona
+n_lakes = 2
 
 ##############################################################
 #PART 1: Data processing
@@ -68,91 +81,102 @@ winter=c(334,120)
 #Mendota:  
 #https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=05427718&startDT=2013-09-21&endDT=2014-09-21&parameterCd=00045&siteStatus=all
 
-#Preallocate and get number of lakes
-n_lakes = length(site_keys)
-lake_table = vector("list", n_lakes)
-daily_precip = vector("list", n_lakes)
-real_start = vector("list", n_lakes)
-#Final data set
-lake_data = vector("list", n_lakes)
 
-#Loop over lakes to get stage level and dates: 
-for(n in 1:n_lakes){ 
-	#Use the USGS address format to get data over the date range
-	url1 = paste(url_base[1], site_keys[n], "&startDT=", start_date,
-		"&endDT=",current_date,"&parameterCd=00060,00065&siteStatus=all",sep="" )
-	
-	lake_table[[n]]= as.data.frame(read_delim(print(url1), comment = "#", delim="\t"))
-	lake_table[[n]] = lake_table[[n]][-1,]
-	lake_table[[n]][,"datetime"] = as.POSIXct(lake_table[[n]][,"datetime"],
-                       format = '%Y-%m-%d %H:%M')
-	lake_table[[n]][,5] = as.numeric(as.character(lake_table[[n]][,5]))
+  #Preallocate the important historical data tables 
+  lake_table = vector("list", n_lakes)
+  daily_precip = vector("list", n_lakes)
+  #Final data sets
+  lake_data = vector("list", n_lakes)
+  #Readable dates for plotting
+  lake_dates = vector("list", n_lakes)
 
-	lake_table[[n]] = lake_table[[n]][,c(3, 5)]
-	colnames(lake_table[[n]] ) = c("datetime", "level")
+  #Load the historic data sets
+  lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
+  lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
+  lake_table[[2]] = read.csv(file = "./../data/mon_hist.csv")
+  lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
+  daily_precip[[1]] = read.csv(file = "./../data/rain_hist.csv")
+  daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
+  daily_precip[[2]] = daily_precip[[1]]
 
-	#Data seem to be at 15 min intervals by default. Aggregate these into 
-	#a mean daily level
-	lake_table[[n]] = lake_table[[n]] %>%
-  		mutate(day = as.Date(ymd_hms(datetime))) %>%
-  		group_by(day) %>%
-  		summarise(level = mean(level, na.rm = TRUE)) %>%
-  		as.data.frame()
-	
-	#Just in case we requested back too far, what is the actual start 
-	#date of the retrieved data?
-	real_start[[n]] = lake_table[[n]][1,"day"]
-                     
-	#Get the matching precipitation data from the NASA POWER collection
-	daily_precip[[n]] = get_power(
-	  community = "ag",
-	  lonlat = c(43.0930, -89.3727),
-	  pars =  nasa_pars,
-	  dates = c(paste(real_start[[n]]), paste(current_date)),
-	  temporal_api = "daily"
-	) %>% as.data.frame()
-	daily_precip[[n]] = daily_precip[[n]][,c(7,8)]
-	colnames(daily_precip[[n]]) = c("day", "rn")
+  #Truncate the data 
+  for (n in 1:n_lakes){ 
+    lake_table[[n]] = lake_table[[n]][lake_table[[n]][,"time"] > real_start[[n]], ]
 
-	#Join the lake and rain data to match up dates
-	lake_table[[n]] = lake_table[[n]] %>%
-			inner_join(daily_precip[[n]], by = "day" ) 
+  }
+  
+  #Final processing steps of the raw data which joins lake
+  #and precip and truncates to desired start date. 
+  for (n in 1: n_lakes){
 
-	#Do some processing to remove ice-on days (approximately). This 
-	#function automatically removes winter days and converts data 
-	#table to a timeseries (ts) object 
-	lake.tmp = remove.days(lake_table[[n]]$level, year(real_start[[n]] ) )
-	colnames(lake.tmp) = "level"
-	rn.tmp = remove.days(lake_table[[n]]$rn, year(real_start[[n]] ) )
-	colnames(rn.tmp) = "rn"
+    #Join the lake and rain data to match up dates
+    lake_data[[n]] = lake_table[[n]] %>%
+          inner_join(daily_precip[[n]], by = "time" )
 
-	#This final step creates the full data object, with lags of 
-	#lake level for autocorrelation and lags of rain for delayed
-	#rain input. 
-	lake_data[[n]] = make.flashiness.object(lake.tmp, rn.tmp, lags)
+    #Truncate the data set so that we only have from real_start
+    #onwards. 
+    lake_data[[n]] = lake_data[[n]][lake_data[[n]][,"time"] 
+                      >= real_start[[n]], ]
 
-}
+    #Do some processing to remove ice-on days (approximately). This 
+    #function automatically removes winter days and converts data 
+    #table to a timeseries (ts) object 
+    lake.tmp = remove.days(lake_data[[n]][,c(1,2)], year(real_start[[n]] ) )
+    #colnames(lake.tmp) = "level"
+    rn.tmp = remove.days(lake_data[[n]][,c(1,3)], year(real_start[[n]] ) )
+    #colnames(rn.tmp) = "rn"
 
+    #Keep the dates
+    lake_dates[[n]] = lake.tmp$time 
+
+    #as_date(date_decimal(as.numeric(time(lake.tmp))))
+
+ 	#This final step creates the full data object, with lags of 
+	#lake level and lags of rain. Note, this is different than it 
+    	#is for the GAM/statistical modelling stuff! For this RNN the 
+     #lags are the number of days into the future we wish to forecast.
+
+    	#Assume the future precip will have 7 days:
+	lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level),
+	 data.frame(rn=rn.tmp$rn), lags, auto=F, orders=lags)
+  }
 
 ##############################################################
-#PART 2: tensorflow
+#PART 2: keras and tensorflow
 ##############################################################
 
 #Store fitted models
-lake_models = vector("list", n_lakes)
+lake_models_lstm = vector("list", n_lakes)
 
 #Performance and prediction 
 pred_train = vector("list", n_lakes)
 pred_test = vector("list", n_lakes)
 
-#This function is for tensorflow to create a DNN. This is 
-#analogous to the "model form"  
-build_and_compile_model = function(norm) {
-  model = keras_model_sequential() %>%
-    norm() %>%
-    layer_dense(64, activation = 'relu') %>%
-    layer_dense(64, activation = 'relu') %>%
-    layer_dense(1)
+#Need to make the lake data a 3D array and to separe out the 
+#lake level and rain lags into separate matrixes (along the 
+#3rd array dimension):
+lake_data3D = vector("list", n_lakes)
+
+
+#Model definition: 
+#This function is for tensorflow to create the LSTM. This is 
+#analogous to the "model form"   
+
+build_and_compile_model = function() {
+	model = keras_model_sequential() %>%
+	layer_lstm(units = 64, # size of the layer
+		activation = 'relu',
+		# batch size, timesteps, features
+        	batch_input_shape = c(1, lags+1, 2), 
+	   	return_sequences = TRUE,
+        	stateful = TRUE) %>%
+	# fraction of the units to drop for the linear transformation of the inputs
+	layer_dropout(rate = 0.5) %>%
+	layer_lstm(units = 64,
+             return_sequences = TRUE,
+             stateful = TRUE) %>%
+	layer_dropout(rate = 0.5) %>%
+	time_distributed(layer_dense(units = 1))
 
   model %>% compile(
     loss = 'mean_absolute_error',
@@ -163,75 +187,94 @@ build_and_compile_model = function(norm) {
 }
 
 for(n in 1:n_lakes){ 
+	##########################################################################
+	#Processing section to convert each lake_data[[n]] to correct 
+	#format for LSTM. This includes an X and Y data set. 
+	##########################################################################
 
-	# Use the residuals from the GARCH model so that the trends in variance are
-	# removed. Note, this version only fits the GARCH part because the AR will be
-	# fit by the GAM: 
+	#Chop off time 
+	ld_tmp = lake_data[[n]][,-1]
 
-	lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
-				 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
+	#Chop off the first lagged rows with NAs:
+	ld_tmp = ld_tmp[-(1:(lags+1)), ]
 
-	# New lake-level time series based on residuals
-	lake_new=as.matrix(lake_gfit1@residuals)
+	ntime_full = dim(ld_tmp)[1]
 
-	#The ML models will primarily pick up on AR when it is present so remove this.
-	#New lake-level time series based on AR residuals
-	lake_new = as.matrix(ar(lake_new)$resid)
+	#Separate last two rows: one for predicion data, 
+	#the second for comparison: 
+	lake_test = ld_tmp [(ntime_full-1), ]
+	lake_compare = ld_tmp [(ntime_full), ]
+	ld_tmp = ld_tmp[1:(ntime_full-2), ]
 
-	# New time series after removing NAs in the rain
-	rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
-	lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
-	colnames(rn_new) = "rn"
-	#lake_new = lake_data[[n]]$level
-	colnames(lake_new) = "level"
+	#Standardize both of these data sets (separately!) 
+	#(mean =0, var = 1)
+	scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
+	ld_tmp = scale(ld_tmp)
+	
+	scale_test = matrix(
+				c( mean(unlist(lake_test[1:(lags+1)])),
+					mean(unlist(lake_test[(lags+2):(2*lags)])),
+					sqrt(var(unlist(lake_test[1:(lags+1)]))),
+					sqrt(var(unlist(lake_test[(lags+2):(2*lags)])))),
+				2,2)
 
-	#Combine all of the data, add the lagged data, and turn into ts
-	lake_r = make.flashiness.object( lake_new , rn_new, lags)
-	lake_r = na.omit(lake_r) #No NAs for RF models
+	lake_test[1:(lags+1)] = (lake_test[1:(lags+1)] - 
+		scale_test[1,1])/scale_test[2,1]
+	lake_test[(lags+2):(2*lags)] = (lake_test[(lags+2):(2*lags)] - 
+		scale_test[2,1])/scale_test[2,2]
+	
+	#Split the remaining data into X and Y for training.
+	#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+	#and Y will be lags:100. 
+	ntime_tmp = dim(ld_tmp)[1]
+	ld_tmp_x = ld_tmp[1:(ntime_tmp-lags),]
+	ld_tmp_y = ld_tmp[(lags+1):(ntime_tmp),]
+	
+	#Split the features in both X and Y, as well as the test 
+	#prediction matrix, into arrays as 3D objects
+	lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+		dim = c(nrow(ld_tmp_x),
+			ncol(ld_tmp_x)/2,2) )
 
-	#Split data for training and testing: 
-	ind = base::sample(2, nrow(lake_r), replace = TRUE, prob = c(0.7, 0.3))
-	train = lake_r [ind==1,]
-	test = lake_r [ind==2,]
+	lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+		dim = c(nrow(ld_tmp_y),
+			ncol(ld_tmp_y)/2,2) )
 
-	#Split the labels from the features: 
-	train_f = select(train, -level)
-	test_f = select(test, -level)
+	lake_data3D_test = array(data = as.numeric(unlist(lake_test)), 
+		dim = c(nrow(lake_test),
+			ncol(lake_test)/2,2) )
 
-	train_l = select(train, level)
-	test_l = select(test, level)
-
-	#Normalize the data:
-	#(This is an alternative approach to using MinMaxScaler with 
-	#fit_transform and transform)
-	normalizer = layer_normalization (axis = -1L)
-	adapt(normalizer, as.matrix(train_f))
+	##########################################################################
+	#Model fitting section.
+	##########################################################################
 
 	#Build the model
-	lake_models[[n]]  = build_and_compile_model(normalizer)
+	lake_models_lstm[[n]]  = build_and_compile_model()
 	#summary(dnn_model)
 
 	#Fit the model to training data
-	pred_train[[n]] = lake_models[[n]]  %>% fit(
-	  as.matrix(train_f),
-	  as.matrix(train_l),
-	  validation_split = 0.2,
-	  verbose = 0,
-	  epochs = 100
+	lake_models_lstm[[n]] %>% fit(
+		x = lake_data3D_x,
+		y = lake_data3D_y,
+		batch_size = 1,
+		epochs = 20,
+		verbose = 0,
+		shuffle = FALSE #Important for LSTM!
 	)
 
-	#Evaluate the performance on test data
-	pred_test[[n]] = lake_models[[n]]  %>% evaluate(
-	  as.matrix(test_f),
-	  as.matrix(test_l),
-	  verbose = 0
-	)
-
+	#look at the forecast
+	lake_forecast = lake_models_lstm[[n]]  %>%
+	  predict(lake_data3D_test, batch_size = 1) %>%
+	  .[, , 1]
+	 
+	lake_forecast*scale_ld[1,2]+scale_ld[1,1]
+	lake_compare 
 
 }
 
 ##############################################################
 #PART 3: Look at performance and importance of variables
+#Not implemented yet. 
 #Use LIME to plot feature importance. 
 ##############################################################
 
