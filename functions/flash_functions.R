@@ -15,8 +15,14 @@
 #on this work.
 
 library(lubridate)
+#Stats
 library(mgcv)
 library(fGarch) #For GARCH models
+#For tensorflow:
+library(keras)
+library(tensorflow)
+library(tidymodels)
+library(recipes)
 
 ##############################################################
 # Data processing function 1: Remove winter and leap days from
@@ -293,28 +299,45 @@ fitGAM_ar = function( lake_data, model_form){
 }
 
 ##############################################################
-# Wrap tensorflow and the DNN model fitting in a function 
+# Wrap keras and the LSTM model fitting in a function 
 # that can be called by global.R and server.R. This version 
-# uses keras to normalize, create 2 hidden layers, relu, adam. 
+# uses keras to initialize, create lstm layer, relu, adam. 
 ##############################################################
 
-fitDNN = function(lake_data ){
+fitLSTM = function(lake_data, lagsp ){
 
+	
 	#Store fitted models
-	lake_models = vector("list", n_lakes)
+	lake_models_lstm = vector("list", n_lakes)
 
 	#Performance and prediction 
 	pred_train = vector("list", n_lakes)
 	pred_test = vector("list", n_lakes)
 
-	#This function is for tensorflow to create a DNN. This is 
-	#analogous to the "model form"  
-	build_and_compile_model = function(norm) {
-	  model = keras_model_sequential() %>%
-	    norm() %>%
-	    layer_dense(64, activation = 'relu') %>%
-	    layer_dense(64, activation = 'relu') %>%
-	    layer_dense(1)
+	#Need to make the lake data a 3D array and to separe out the 
+	#lake level and rain lags into separate matrixes (along the 
+	#3rd array dimension):
+	lake_data3D = vector("list", n_lakes)
+
+	#Model definition: 
+	#This function is for tensorflow to create the LSTM. This is 
+	#analogous to the "model form"   
+
+	build_and_compile_model = function() {
+		model = keras_model_sequential() %>%
+		layer_lstm(units = 64, # size of the layer
+			activation = 'relu',
+			# batch size, timesteps, features
+	        	batch_input_shape = c(1, lagsp+1, 2), 
+		   	return_sequences = TRUE,
+	        	stateful = TRUE) %>%
+		# fraction of the units to drop for the linear transformation of the inputs
+		layer_dropout(rate = 0.5) %>%
+		layer_lstm(units = 64,
+	             return_sequences = TRUE,
+	             stateful = TRUE) %>%
+		layer_dropout(rate = 0.5) %>%
+		time_distributed(layer_dense(units = 1))
 
 	  model %>% compile(
 	    loss = 'mean_absolute_error',
@@ -324,125 +347,185 @@ fitDNN = function(lake_data ){
 	  model
 	}
 
+	##########################################################################
+	#Processing section to convert each lake_data[[n]] to correct 
+	#format for LSTM. This includes an X and Y data set. 
+	##########################################################################
 	for(n in 1:n_lakes){ 
 
-		# New time series after removing NAs in the rain
-		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
-		lake_new = as.matrix(lake_data[[n]]$level[!is.na(lake_data[[n]][,"rn",drop=T])])
-		colnames(rn_new) = "rn"
-		colnames(lake_new) = "level"
+		checkpoint_path = "./cp.ckpt"
+		checkpoint_dir = fs::path_dir(checkpoint_path)
 
-		#Combine all of the data, add the lagged data, and turn into ts
-		lake_r = make.flashiness.object( lake_new , rn_new, lags)
-		lake_r = na.omit(lake_r) #No NAs for RF models
-
-		#Split data for training and testing: 
-		ind = base::sample(2, nrow(lake_r), replace = TRUE, prob = c(0.9, 0.1))
-		train = lake_r [ind==1,]
-		test = lake_r [ind==2,]
-
-		#Split the labels from the features: 
-		train_f = select(train, -level)
-		test_f = select(test, -level)
-
-		train_l = select(train, level)
-		test_l = select(test, level)
-
-		#Normalize the data:
-		#(This is an alternative approach to using MinMaxScaler with 
-		#fit_transform and transform)
-		normalizer = layer_normalization (axis = -1L)
-		adapt(normalizer, as.matrix(train_f))
-
-		#Build the model
-		lake_models[[n]]  = build_and_compile_model(normalizer)
-		#summary(dnn_model)
-
-		#Fit the model to training data
-		pred_train[[n]] = lake_models[[n]]  %>% fit(
-		  as.matrix(train_f),
-		  as.matrix(train_l),
-		  validation_split = 0.2,
-		  verbose = 0,
-		  epochs = 100
+		# Create a callback that saves the model's weights
+		cp_callback = callback_model_checkpoint(
+		  filepath = checkpoint_path,
+		  #save_weights_only = TRUE,
+		  verbose = 1
 		)
 
-		#Evaluate the performance on test data
-		# pred_test[[n]] = lake_models[[n]]  %>% evaluate(
-		#   as.matrix(test_f),
-		#   as.matrix(test_l),
-		#   verbose = 0
-		# )
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lagsp+1)), ]
 
+		ntime_full = dim(ld_tmp)[1]
+
+		#Standardize the data set
+		#(mean =0, var = 1)
+		scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
+		ld_tmp = scale(ld_tmp)
+		
+		#Split the remaining data into X and Y for training.
+		#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+		#and Y will be lags:100. 
+		ntime_tmp = dim(ld_tmp)[1]
+		ld_tmp_x = ld_tmp[1:(ntime_tmp-lagsp),]
+		ld_tmp_y = ld_tmp[(lagsp+1):(ntime_tmp),]
+		
+		#Split the features in both X and into arrays as 3D objects
+		lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_x),
+				ncol(ld_tmp_x)/2,2) )
+
+		lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_y),
+				ncol(ld_tmp_y)/2,2) )
+
+		##########################################################################
+		#Model fitting section.
+		##########################################################################
+
+		#Build the model
+		lake_models_lstm[[n]]  = build_and_compile_model()
+
+		#Fit the model to training data
+		lake_models_lstm[[n]] %>% fit(
+			x = lake_data3D_x,
+			y = lake_data3D_y,
+			batch_size = 1,
+			epochs = 20,
+			verbose = 0,
+			shuffle = FALSE #Important for LSTM!
+			callbacks = list(cp_callback) # Pass callback to training
+
+		)
+
+		lake_models_lstm[[n]]$scale_ld = scale_ld
 
 	}
 
-	return(pred_train)
+	return(lake_models_lstm)
 
 }
 
+##############################################################
+# Wrap keras and the LSTM model fitting and prediction in a 
+# function that can be called by global.R and server.R. 
+# This version uses keras to initialize, create lstm layer, 
+# relu, adam. 
+#
+# Predict the next N days of lake level using historical data
+# of lake level and precip. 
+##############################################################
 
-# ##############################################################
-# # Wrap the model fitting in a function that can be called
-# # by global.R and server.R. This version uses GAMM to fit 
-# # the AR correlation structure
-# ##############################################################
-# fitGAM_ar = function( lake_data, model_form){ 
+fit_predLSTM = function(lake_data, lagsp ){
 
-# 	n_lakes = length(model_form)
-# 	#Store fitted models
-# 	lake_models2 = vector("list", n_lakes)
+	
+	#Store fitted models
+	lake_models_lstm = vector("list", n_lakes)
 
-# 	#Loop over lakes and fit models. Assuming that best-fit models have 
-# 	#already been determined by AIC and GCV. 
-# 	for(n in 1:n_lakes){ 
+	#Performance and prediction 
+	pred_train = vector("list", n_lakes)
+	pred_test = vector("list", n_lakes)
 
-# 		# Use the residuals from the GARCH model so that the trends in variance are
-# 		# removed. Note, this version only fits the GARCH part because the AR will be
-# 		# fit by the GAM: 
+	#Need to make the lake data a 3D array and to separe out the 
+	#lake level and rain lags into separate matrixes (along the 
+	#3rd array dimension):
+	lake_data3D = vector("list", n_lakes)
 
-# 		lake_gfit1=garchFit( ~arma(0,0)+garch(1,1),
-# 					 data=na.exclude(lake_data[[n]][,2,drop=F]), trace=F)
+	#Model definition: 
+	#This function is for tensorflow to create the LSTM. This is 
+	#analogous to the "model form"   
 
-# 		# New lake-level time series based on residuals
-# 		lake_new=as.matrix(lake_gfit1@residuals)
+	build_and_compile_model = function() {
+		model = keras_model_sequential() %>%
+		layer_lstm(units = 64, # size of the layer
+			activation = 'relu',
+			# batch size, timesteps, features
+	        	batch_input_shape = c(1, lagsp+1, 2), 
+		   	return_sequences = TRUE,
+	        	stateful = TRUE) %>%
+		# fraction of the units to drop for the linear transformation of the inputs
+		layer_dropout(rate = 0.5) %>%
+		layer_lstm(units = 64,
+	             return_sequences = TRUE,
+	             stateful = TRUE) %>%
+		layer_dropout(rate = 0.5) %>%
+		time_distributed(layer_dense(units = 1))
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam(0.001)
+	  )
+
+	  model
+	}
+
+	##########################################################################
+	#Processing section to convert each lake_data[[n]] to correct 
+	#format for LSTM. This includes an X and Y data set. 
+	##########################################################################
+	for(n in 1:n_lakes){ 
+
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lagsp+1)), ]
+
+		ntime_full = dim(ld_tmp)[1]
+
+		#Standardize the data set
+		#(mean =0, var = 1)
+		scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
+		ld_tmp = scale(ld_tmp)
 		
-# 		#Get the AR order: 
-# 		ar_ord = ar(lake_gfit1@residuals)$order
-# 		#phi = unname(intervals(m$lme, which = "var-cov")$corStruct[, 2])
+		#Split the remaining data into X and Y for training.
+		#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+		#and Y will be lags:100. 
+		ntime_tmp = dim(ld_tmp)[1]
+		ld_tmp_x = ld_tmp[1:(ntime_tmp-lagsp),]
+		ld_tmp_y = ld_tmp[(lagsp+1):(ntime_tmp),]
+		
+		#Split the features in both X and into arrays as 3D objects
+		lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_x),
+				ncol(ld_tmp_x)/2,2) )
 
-# 		#Append this to the model description: 
-# 		mf = paste(model_form[[n]], ", correlation = corARMA(value = 
-# 			phi, fixed =TRUE, form = ~ 1 | time, p =", ar_ord, ")")
+		lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_y),
+				ncol(ld_tmp_y)/2,2) )
 
-# 		# New time series after removing NAs in the rain
-# 		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
-# 		lake_new = as.matrix(lake_new[!is.na(lake_data[[n]][,"rn",drop=T])])
-# 		colnames(rn_new) = "rn"
-# 		colnames(lake_new) = "level"
+		##########################################################################
+		#Model fitting section.
+		##########################################################################
 
-# 		#Combine all of the data, add the lagged data, and turn into ts
-# 		lake_r = make.flashiness.object( lake_new , rn_new, lags)
+		#Build the model
+		lake_models_lstm[[n]]  = build_and_compile_model()
 
-# 		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
-# 		# Those are what are fit here.
-# 		# Use bam() (instead of gam()) from mgcv because it is designed for 
-# 		# large data sets.
+		#Fit the model to training data
+		lake_models_lstm[[n]] %>% fit(
+			x = lake_data3D_x,
+			y = lake_data3D_y,
+			batch_size = 1,
+			epochs = 20,
+			verbose = 0,
+			shuffle = FALSE #Important for LSTM!
+		)
 
-# 		lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML",
-# 			correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+		lake_models_lstm[[n]]$scale_ld = scale_ld
 
-# 		# lake_models2[[n]] = gamm( as.formula(model_form[[n]]), method = "REML", optimizer = c("efs"),
-# 		# 	correlation = corARMA( form = ~ 1 | time, p = ar_ord), data=lake_r )
+	}
 
-# 		lake_models2 [[n]] = bam( as.formula(model_form[[n]]), data=lake_r )
+	return(lake_models_lstm)
 
+}
 
-# 	}
-
-# 	return(lake_models)
-
-# }
 
 
 ##############################################################
@@ -457,61 +540,6 @@ for (a in 1:no.sm.vars){
 	names.list=list(names.list)
 return (names.list)
 
-}
-
-##############################################################
-# GAM prediction with autoregression
-#
-# mgcv provides functions for predicting values with a fitted model,
-# but none of which are designed to work with autoregressive terms.
-# This function is designed to use the existing predict.gam in a stepwise
-# fashion, such that the AR terms can be replied to the response at
-# each step. That is, instead of feeding the AR covariates directly to
-# predict.GAM, this function first creates a new response variable by 
-# using the AR terms seperately, then passing the results of this first
-# prediction to predict.GAM. 
-#	model 		A fitted GAM from mgcv
-#	response 	The response variable
-#	covars 		All of the covariates from the flashiness.object
-#	ar.columns 	A vector giving the column indexes of the AR terms
-#				in the flashiness.object
-#	ns 			The number of time steps to predict (i.e. number of simulations)
-
-
-predict_arGAMbs = function (model, response, covars, ar.columns, ns) {
-
-model.sim=matrix(0,nrow=ns,ncol=1)
-
-#Take the columns from covars that are used in the model and keep them in the same order
-var.list=colnames(covars)[colnames(covars) %in%  names(attr(model$terms,"dataClasses"))]
-covars.temp=covars[var.list]
-covars.use=covars.temp
-ar.list=colnames(covars)[ar.columns]
-ar.columns= which(colnames(covars.temp) %in% ar.list)
-order=length(ar.columns)
-
-model.sim.lp=matrix(0,nrow=ns,ncol=sqrt(length(model$Vp)))
-
-#ICs
-for (rn in 1: order) {model.sim[rn,1]=response[rn]}
-
-for (j in (order+1):ns) { 
-
-k= ar.columns[1]:ar.columns[order]
-covars.temp[j,k]=model.sim[j-(k-ar.columns[1])-1]
-#If NaNs in simulation have real values in data set, replace them
-covars.temp[j,k][is.na(covars.temp[j,k])]=covars[j,k][is.na(covars.temp[j,k])]
-
-new=data.frame(as.matrix(covars.temp[j,]))
-pred.mod=predict.gam(model, newdata=new)
-pred.mod.lp=predict.gam(model, newdata=new,type="lpmatrix")
-model.sim[j]=pred.mod
-model.sim.lp[j,]=pred.mod.lp
-
-}
-
-model.sim.ret=list(model.sim, model.sim.lp)
-return(model.sim.ret)
 }
 
 ##############################################################

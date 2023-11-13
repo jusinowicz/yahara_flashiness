@@ -80,14 +80,12 @@ server <- function(input, output) {
   pred_lakes = predictFlashGAM(lake_data, fut_precip)
 
   ##############################################################
-  #PART 3: Forecasting with DNN 
+  #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
-  #Check to see if the DNNs have already been fitted and saved in 
-  #a *.keras file, or if we need to fit them.
-  updateModelDNN(lake_data)
+  #Check to see if the RNN has already been updated and 
+  #predictions made: 
+  updateLSTM(lake_data, fut_precip)
 
-  #Predict the future lake-level response from the saved DNN
-  pred_lakes_dnn = predictFlashDNN(lake_data, fut_precip )
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
