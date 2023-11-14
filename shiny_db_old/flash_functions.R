@@ -299,6 +299,112 @@ fitGAM_ar = function( lake_data, model_form){
 }
 
 ##############################################################
+# Wrap keras and the LSTM model fitting in a function 
+# that can be called by global.R and server.R. This version 
+# uses keras to initialize, create lstm layer, relu, adam. 
+##############################################################
+
+fitLSTM = function(lake_data, lagsp ){
+
+	
+	#Store fitted models
+	lake_models_lstm = vector("list", n_lakes)
+
+	#Performance and prediction 
+	pred_train = vector("list", n_lakes)
+	pred_test = vector("list", n_lakes)
+
+	#Need to make the lake data a 3D array and to separe out the 
+	#lake level and rain lags into separate matrixes (along the 
+	#3rd array dimension):
+	lake_data3D = vector("list", n_lakes)
+
+	#Model definition: 
+	#This function is for tensorflow to create the LSTM. This is 
+	#analogous to the "model form"   
+
+	build_and_compile_model = function() {
+		model = keras_model_sequential() %>%
+		layer_lstm(units = 64, # size of the layer
+			activation = 'relu',
+			# batch size, timesteps, features
+	        	batch_input_shape = c(1, lagsp+1, 2), 
+		   	return_sequences = TRUE,
+	        	stateful = TRUE) %>%
+		# fraction of the units to drop for the linear transformation of the inputs
+		layer_dropout(rate = 0.5) %>%
+		layer_lstm(units = 64,
+	             return_sequences = TRUE,
+	             stateful = TRUE) %>%
+		layer_dropout(rate = 0.5) %>%
+		time_distributed(layer_dense(units = 1))
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam(0.001)
+	  )
+
+	  model
+	}
+
+	##########################################################################
+	#Processing section to convert each lake_data[[n]] to correct 
+	#format for LSTM. This includes an X and Y data set. 
+	##########################################################################
+	for(n in 1:n_lakes){ 
+
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lagsp+1)), ]
+
+		ntime_full = dim(ld_tmp)[1]
+
+		#Standardize the data set
+		#(mean =0, var = 1)
+		scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
+		ld_tmp = scale(ld_tmp)
+		
+		#Split the remaining data into X and Y for training.
+		#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+		#and Y will be lags:100. 
+		ntime_tmp = dim(ld_tmp)[1]
+		ld_tmp_x = ld_tmp[1:(ntime_tmp-lagsp),]
+		ld_tmp_y = ld_tmp[(lagsp+1):(ntime_tmp),]
+		
+		#Split the features in both X and into arrays as 3D objects
+		lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_x),
+				ncol(ld_tmp_x)/2,2) )
+
+		lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_y),
+				ncol(ld_tmp_y)/2,2) )
+
+		##########################################################################
+		#Model fitting section.
+		##########################################################################
+
+		#Build the model
+		lake_models_lstm[[n]]  = build_and_compile_model()
+
+		#Fit the model to training data
+		lake_models_lstm[[n]] %>% fit(
+			x = lake_data3D_x,
+			y = lake_data3D_y,
+			batch_size = 1,
+			epochs = 20,
+			verbose = 0,
+			shuffle = FALSE #Important for LSTM!
+		)
+
+		lake_models_lstm[[n]]$scale_ld = scale_ld
+
+	}
+
+	return(lake_models_lstm)
+
+}
+
+##############################################################
 # Wrap keras and the LSTM model fitting and prediction in a 
 # function that can be called by global.R and server.R. 
 # This version uses keras to initialize, create lstm layer, 
@@ -311,7 +417,6 @@ fitGAM_ar = function( lake_data, model_form){
 fit_predLSTM = function(lake_data_lstm, lagsp ){
 	#Store fitted models
 	lake_models_lstm = vector("list", n_lakes)
-	lake_models_forecast = vector("list", n_lakes)
 
 	#Performance and prediction 
 	pred_train = vector("list", n_lakes)
@@ -355,81 +460,79 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 	#format for LSTM. This includes an X and Y data set. 
 	##########################################################################
 	for(n in 1:n_lakes){ 
-			checkpoint_path = paste("./LSTM/", "lakeLSTM",n,".tf", sep="")
-			checkpoint_dir = fs::path_dir(checkpoint_path)
+		checkpoint_path = "./lm.ckpt"
+		checkpoint_dir = fs::path_dir(checkpoint_path)
 
-			# Create a callback that saves the model's weights
-			cp_callback = callback_model_checkpoint(
-			  filepath = checkpoint_path,
-			  #save_weights_only = TRUE,
-			  verbose = 1
-			)
+		# Create a callback that saves the model's weights
+		cp_callback = callback_model_checkpoint(
+		  filepath = checkpoint_path,
+		  #save_weights_only = TRUE,
+		  verbose = 1
+		)
 
-			#Chop off time 
-			ld_tmp = lake_data_lstm[[n]][,-1]
+		#Chop off time 
+		ld_tmp = lake_data_lstm[[n]][,-1]
 
-			#Chop off the first lagged rows with NAs:
-			ld_tmp = ld_tmp[-(1:(lagsp)), ]
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lagsp)), ]
 
-			ntime_full = dim(ld_tmp)[1]
+		ntime_full = dim(ld_tmp)[1]
 
-			#Use last row for prediction: 
-			lake_pred = ld_tmp [(ntime_full), ]
-			ld_tmp = ld_tmp[1:(ntime_full-1), ]
+		#Separate last two rows: one for predicion data, 
+		#the second for comparison: 
+		lake_pred = ld_tmp [(ntime_full), ]
+		ld_tmp = ld_tmp[1:(ntime_full-1), ]
 
-			#Split the remaining data into X and Y for training.
-			#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
-			#and Y will be lags:100. 
-			ntime_tmp = dim(ld_tmp)[1]
-			ld_tmp_x = ld_tmp[1:(ntime_tmp-lagsp),]
-			ld_tmp_y = ld_tmp[(lagsp+1):(ntime_tmp),]
-			
-			#Split the features in both X and Y, as well as the test 
-			#prediction matrix, into arrays as 3D objects
-			lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
-				dim = c(nrow(ld_tmp_x),
-					ncol(ld_tmp_x)/2,2) )
+		#Split the remaining data into X and Y for training.
+		#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+		#and Y will be lags:100. 
+		ntime_tmp = dim(ld_tmp)[1]
+		ld_tmp_x = ld_tmp[1:(ntime_tmp-lagsp),]
+		ld_tmp_y = ld_tmp[(lagsp+1):(ntime_tmp),]
+		
+		#Split the features in both X and Y, as well as the test 
+		#prediction matrix, into arrays as 3D objects
+		lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_x),
+				ncol(ld_tmp_x)/2,2) )
 
-			lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
-				dim = c(nrow(ld_tmp_y),
-					ncol(ld_tmp_y)/2,2) )
+		lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_y),
+				ncol(ld_tmp_y)/2,2) )
 
-			lake_data3D_test = array(data = as.numeric(unlist(lake_pred)), 
-				dim = c(nrow(lake_pred),
-					ncol(lake_pred)/2,2) )
+		lake_data3D_test = array(data = as.numeric(unlist(lake_pred)), 
+			dim = c(nrow(lake_pred),
+				ncol(lake_pred)/2,2) )
 
-			##########################################################################
-			#Model fitting section.
-			##########################################################################
-			#Build the model
+		##########################################################################
+		#Model fitting section.
+		##########################################################################
 
-			#If it exists, load it. Otherwise, compile it fresh:  
-			if(exists(checkpoint_path)){ 
-				load_model_tf(paste("lakeLSTM",n,".tf", sep="") ) 
-			}else {  
-				lake_models_lstm[[n]]  = build_and_compile_model()
-			}
+		#Build the model
+		lake_models_lstm[[n]]  = build_and_compile_model()
 
-			#Fit the model to training data
-			lake_models_lstm[[n]] %>% fit(
-				x = lake_data3D_x,
-				y = lake_data3D_y,
-				batch_size = 1,
-				epochs = 20,
-				#verbose = 0,
-				shuffle = FALSE, #Important for LSTM!
-				callbacks = list(cp_callback) # Pass callback to training
+		#Fit the model to training data
+		lake_models_lstm[[n]] %>% fit(
+			x = lake_data3D_x,
+			y = lake_data3D_y,
+			batch_size = 1,
+			epochs = 20,
+			#verbose = 0,
+			shuffle = FALSE, #Important for LSTM!
+			callbacks = list(cp_callback) # Pass callback to training
 
-			)
+		)
+
+		lake_models_lstm[[n]]$scale_ld = scale_ld
 
 		#Make the 7-day (lagsp) forecast
-		lake_models_forecast[[n]] = lake_models_lstm[[n]]  %>%
+		lake_models_lstm[[n]]$forecast = lake_models_lstm[[n]]  %>%
 		predict(lake_data3D_test, batch_size = 1) %>%
 			.[, , 1]
 
 	}
 
-	save(file = "todays_forecast.var", lake_models_forecast )
+	return(lake_models_lstm)
 
 }
 

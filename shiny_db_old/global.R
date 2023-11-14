@@ -405,26 +405,58 @@ predictFlashGAM = function(lake_data, fut_precip){
 ###############################################################################
 
 ###############################################################################
-# updateModelLSTM is the function to fit and update the LSTM RNN with keras . 
-# It is effectively a wrapper for the keras functions.
-# In its current iteration, this just needs to be run daily to train the model
-# on new data and generate new predictions. 
+# updateModelLSTM is the function to take fit a LSTM RNN with keras if one does not 
+# already exist. It is effectively a wrapper for the keras functions.
+# It looks to see if models already exist. It returns a model and saves it if 
+# not.
 ###############################################################################
+
+update_onceLSTM = function (lake_data){
+
+	#First check to see if the fitted models already exist. If they don't, 
+	#run the code to fit the models. This is time consuming! 
+	#The standard I have chosen to employ is to name stored fitted models 
+	#with suffix ".keras"
+	model_files = list.files("./")
+	model_true = grepl("*LSTM*.*keras|*keras.*LSTM*", model_files)
+
+	#Test if thefile exists
+	if(  sum(model_true) >= 1 ){   
+
+		#Which are the model files? 
+		model_files = model_files[model_true == TRUE ]
+		n_files = length(model_files)
+		for (f in 1:n_files){ 
+			lake_models_lstm[[f]] = load_model_tf(file = 
+				paste(model_files[f]))
+	}else{ 
+
+		#We have to fit each model.This is a wrapper for keras
+	    lake_models_lstm = fit_predLSTM(lake_data,fut_precip, dim(fut_precip)[1]-1 ) 
+	    l1 = length(lake_models_lstm)
+	    for (ll in 1:l1){ 
+	    	save_model_tf(file = paste("lakeLSTM",ll,".keras", sep=""), 
+	    		lake_models_lstm[[ll]])
+		} 
+  
+	}
+
+}
 
 ###############################################################################
 # 
 ###############################################################################
 
-updateModelLSTM = function(lake_data_lstm, lagsp = 7 ){
+updateModelLSTM = function (lake_data_lstm, fut_precip){
 
   #First check to see if the fitted models already exist. If they don't, 
   #run the code to fit the models. This is time consuming! 
   #The standard I have chosen to employ is to name stored fitted models 
   #with suffix ".var"
-  model_files = list.files("./LSTM/")
-  model_true = grepl("*LSTM*.*tf|*tf.*LSTM*", model_files)
+  model_files = list.files("./")
+  model_true = grepl("*LSTM*.*keras|*keras.*LSTM*", model_files)
 
-  #Test if the files/folders exist and have been updated today
+  #Test if thefile exists
   if(  sum(model_true) >= 1 ){   
     
     #Which are the model files? 
@@ -432,27 +464,120 @@ updateModelLSTM = function(lake_data_lstm, lagsp = 7 ){
     n_files = length(model_files)
 
     #Were they created today? 
-    tyes = 0 
     for (f in 1:n_files){
-    	#Get the dates on model files
-    	get_dates = file.info(list.files(
-    		paste("./LSTM/",model_files[f],sep=""),
-    		full.names=T))$mtime
-    	#Find the latest date
-    	latest_date = max(as_date (get_dates))
-    	#Check it against today
-    	if( latest_date == current_date){ tyes = tyes +1 }
-    }
-
-    #If fewer than n_files have been updated then run the updates
-    if ( tyes < n_files){
-		 	#We have to update each model.This is a wrapper for keras
-		    fit_predLSTM(lake_data_lstm, lagsp ) 
+    	if( as_date(file.info(paste(model_files[f]))$mtime) == 
+    		current_date){
+    		load_model_tf( paste(model_files[f]) )
+    	}else{
+		 	#We have to fit each model.This is a wrapper for keras
+		    lake_models_lstm = fit_predLSTM(lake_data_lstm, dim(fut_precip)[1]-1 ) 
+		    l1 = length(lake_models_lstm)
+		    for (ll in 1:l1){ 
+		    	save_model_tf(file = paste("lakeLSTM",ll,".keras", sep=""), 
+		    		lake_models_lstm[[ll]])
+    		} 
 		} 
+
+  	}
  
   }else{ 
     #We have to fit the models.This is a wrapper for keras
-	fit_predLSTM(lake_data_lstm, lagsp ) 
+     lake_models_lstm = fit_predLSTM(lake_data_lstm,dim(fut_precip)[1]-1)
+		    l1 = length(lake_models_lstm)
+		    for (ll in 1:l1){ 
+		    	save_model_tf(file = paste("lakeLSTM",ll,".keras", sep=""), 
+		    		lake_models_lstm[[ll]])
+    		} 
   }
 
 }
+
+###############################################################################
+# predictFlashGAM uses the fitted GAM to predict future rain
+# It returns fitted data points with SE for the number of future precipitation 
+# events that have been given to it. 
+###############################################################################
+update_predictLSTM= function(lake_data, fut_precip){
+
+    #Where the fitted model coefficients and Lp matrix live
+    model_files = list.files("./")
+    model_true = grepl("*LSTM*.*keras|*keras.*LSTM*", model_files)
+
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+
+    #Store fitted models
+	lake_models_lstm = vector("list", n_lakes)
+
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      lake_models_lstm[[n]]=load_model_tf(paste(model_files[n]) )
+    }
+
+    #How many days are we forecasting? 
+    n_days = dim(fut_precip)[1]
+
+    #Most current time step
+    ntime = (tail(lake_data[[1]],1))$time
+
+	#Prediction 
+	pred_test = vector("list", n_lakes)
+
+	#Need to make the lake data a 3D array and to separe out the 
+	#lake level and rain lags into separate matrixes (along the 
+	#3rd array dimension):
+	lake_data3D = vector("list", n_lakes)
+
+
+	for(n in 1:n_lakes){ 
+		##########################################################################
+		#Processing section to convert each lake_data[[n]] to correct 
+		#format for LSTM. This includes an X and Y data set. 
+		##########################################################################
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lagsp+1)), ]
+
+		ntime_full = dim(ld_tmp)[1]
+
+		#Standardize the data set
+		#(mean =0, var = 1)
+		scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
+		ld_tmp = scale(ld_tmp)
+		
+		#Split the remaining data into X and Y for training.
+		#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+		#and Y will be lags:100. 
+		ntime_tmp = dim(ld_tmp)[1]
+		ld_tmp_x = ld_tmp[1:(ntime_tmp-lagsp),]
+		ld_tmp_y = ld_tmp[(lagsp+1):(ntime_tmp),]
+		
+		#Split the features in both X and into arrays as 3D objects
+		lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_x),
+				ncol(ld_tmp_x)/2,2) )
+
+		lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+			dim = c(nrow(ld_tmp_y),
+				ncol(ld_tmp_y)/2,2) )
+
+		##########################################################################
+		#Model fitting section.
+		##########################################################################
+
+		#Fit the model to training data
+		lake_models_lstm[[n]] %>% fit(
+			x = lake_data3D_x,
+			y = lake_data3D_y,
+			batch_size = 1,
+			epochs = 20,
+			verbose = 0,
+			shuffle = FALSE, #Important for LSTM!
+			callbacks = list(cp_callback) # Pass callback to training
+		)
+
+
+	    return(pred_lakes)
+
+}
+

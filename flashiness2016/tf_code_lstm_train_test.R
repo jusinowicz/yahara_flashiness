@@ -131,15 +131,17 @@ n_lakes = 2
 
     #as_date(date_decimal(as.numeric(time(lake.tmp))))
 
- 	#This final step creates the full data object, with lags of 
-	#lake level and lags of rain. Note, this is different than it 
-    	#is for the GAM/statistical modelling stuff! For this RNN the 
-     #lags are the number of days into the future we wish to forecast.
-
-    	#Assume the future precip will have 7 days:
-	lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level),
-	 data.frame(rn=rn.tmp$rn), lags, auto=F, orders=lags)
+	#For the RNN. The lags are the number of days into the future we 
+    #wish to forecast.
+    scale_ll = c ( mean(lake.tmp$level), sqrt(var(lake.tmp$level)) )
+    scale_rn = c ( mean(rn.tmp$rn), sqrt(var(rn.tmp$rn)) )
+    lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
+      (lake.tmp$level - scale_ll[1])/scale_ll[2] ),
+      data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
+  
   }
+
+lake_data2 = lake_data
 
 ##############################################################
 #PART 2: keras and tensorflow
@@ -191,15 +193,20 @@ for(n in 1:n_lakes){
 	#Processing section to convert each lake_data[[n]] to correct 
 	#format for LSTM. This includes an X and Y data set. 
 	##########################################################################
-	checkpoint_path = "./lm.ckpt"
+	checkpoint_path = "./test1/lm.ckpt"
 	checkpoint_dir = fs::path_dir(checkpoint_path)
 
 	# Create a callback that saves the model's weights
 	cp_callback = callback_model_checkpoint(
 	  filepath = checkpoint_path,
-	  #save_weights_only = TRUE,
+	  save_weights_only = TRUE,
 	  verbose = 1
 	)
+
+	#Use a subset initially:
+	s1 = 1
+	s2 = 1000
+	lake_data[[n]] = lake_data2[[n]][s1:s2,]
 
 	#Chop off time 
 	ld_tmp = lake_data[[n]][,-1]
@@ -283,127 +290,78 @@ for(n in 1:n_lakes){
 }
 
 ##############################################################
-#PART 3: Look at performance and importance of variables
-#Not implemented yet. 
-#Use LIME to plot feature importance. 
+#PART 3: Try reloading a model and resuming training 
 ##############################################################
 
-class( lake_models[[n]])
-# Setup lime::model_type().The only input is x, the keras model. 
-# The function simply returns classification, which tells LIME we 
-# are classifying.
-model_type.keras.engine.sequential.Sequential = function(x, ...) {
-  "classification"}
+n=1 
 
-# Setup the prediction function for the model type
-predict_model.keras.engine.sequential.Sequential = function (x, 
-	newdata, type, ...) {
-  pred <- predict(object = x, x = as.matrix(newdata))
-  data.frame (Positive = pred, Negative = 1 - pred) 
-}
+s3 = s1+1000
+s4 = s2+1000
 
-#Test that we have set this up correctly
-predict_model (x       = lake_models[[n]], 
-               newdata = train_f, 
-               type    = 'raw')
+checkpoint_path = "./test1/lm.ckpt"
+	checkpoint_dir = fs::path_dir(checkpoint_path)
 
-#Create an explainer with LIME. 
-#If data were categorical, set bin_continuous = FALSE
-explainer = lime(x = train_f, model= lake_models[[n]], 
-	bin_continuous = TRUE)  
+	# Create a callback that saves the model's weights
+	cp_callback = callback_model_checkpoint(
+	  filepath = checkpoint_path,
+	  save_weights_only = TRUE,
+	  verbose = 1
+	)
 
-#Run explain on the explanation:
-explanation = lime::explain (
-    x = test_f[1:10, ],
-    explainer    = explainer, 
-    n_features = 4,
-    n_labels = 1,  
-    kernel_width = 0.5)
+	lake_data[[n]] = lake_data2[[n]][s3:s4,]
 
-#Plot the features as bar plots with the built-in plot tool
-plot_features (explanation)
+	#Chop off time 
+	ld_tmp = lake_data[[n]][,-1]
 
-ggplot(data.frame( pred = as.numeric(pred1),level = test_l$level)) +
-  geom_point(aes(x = pred, y = level )) +
-  geom_abline(intercept = 0, slope = 1, color = "blue")
+	#Chop off the first lagged rows with NAs:
+	ld_tmp = ld_tmp[-(1:(lags+1)), ]
 
+	ntime_full = dim(ld_tmp)[1]
 
-#########################################################################
-# This is junk from failed attempts to get feature significance to run
-# I think some of this code might be useful later so I'm saving it here.
-# conda create -n py3.11 python=3.11 scikit-learn pandas numpy matplotlib
-#
-# So far I have been unable to get any of the various 
-# feature-significance methods/packages to run successfully
-# on a keras DNN. Tried setting up reticulate to export 
-# directly to python but this seems fraught with its own 
-# difficulties. Giving up on making this work in R for now.
-# Nothing below here actually works :(
+	#Separate last two rows: one for predicion data, 
+	#the second for comparison: 
+	lake_test = ld_tmp [(ntime_full-1), ]
+	lake_compare = ld_tmp [(ntime_full), ]
+	ld_tmp = ld_tmp[1:(ntime_full-2), ]
 
-use_condaenv("py3.11", required = TRUE)
-use_condaenv("py3.10_tf", required = TRUE)
+	#Standardize both of these data sets (separately!) 
+	#(mean =0, var = 1)
+	scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
+	ld_tmp = scale(ld_tmp)
+	
+	scale_test = matrix(
+				c( mean(unlist(lake_test[1:(lags+1)])),
+					mean(unlist(lake_test[(lags+2):(2*lags)])),
+					sqrt(var(unlist(lake_test[1:(lags+1)]))),
+					sqrt(var(unlist(lake_test[(lags+2):(2*lags)])))),
+				2,2)
 
-reticulate::conda_install(
-    packages = c("lime", "scikit-learn","numpy","pandas"),
-    envname = "py3.10_tf"
-)
+	lake_test[1:(lags+1)] = (lake_test[1:(lags+1)] - 
+		scale_test[1,1])/scale_test[2,1]
+	lake_test[(lags+2):(2*lags)] = (lake_test[(lags+2):(2*lags)] - 
+		scale_test[2,1])/scale_test[2,2]
+	
+	#Split the remaining data into X and Y for training.
+	#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
+	#and Y will be lags:100. 
+	ntime_tmp = dim(ld_tmp)[1]
+	ld_tmp_x = ld_tmp[1:(ntime_tmp-lags),]
+	ld_tmp_y = ld_tmp[(lags+1):(ntime_tmp),]
+	
+	#Split the features in both X and Y, as well as the test 
+	#prediction matrix, into arrays as 3D objects
+	lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
+		dim = c(nrow(ld_tmp_x),
+			ncol(ld_tmp_x)/2,2) )
 
-sklearn = import("sklearn") 
-tf = import("tensorflow") 
-np = import("numpy")
-shp = import("shap") 
-lm = import("lime")
-pd = import("pandas")
+	lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
+		dim = c(nrow(ld_tmp_y),
+			ncol(ld_tmp_y)/2,2) )
 
-explainer = lime$lime_tabular$LimeTabularExplainer(train_f, feature_names=list(train_f), class_names=[0, 1], mode='classification')
+	lake_data3D_test = array(data = as.numeric(unlist(lake_test)), 
+		dim = c(nrow(lake_test),
+			ncol(lake_test)/2,2) )
 
-explainer = lm$lime_tabular$LimeTabularExplainer(train_f, training_labels=train_l, 
-										 feature_names=train,
-                                                   discretize_continuous=TRUE,
-                                                   #class_names=['Falling', 'Rising'],
-                                                   discretizer='decile')
-
-explainer = shp$TreeExplainer(lake_models[[n]])
-shap_values = explainer.shap_values(X)
-
-
-shp$initjs()
-
-
-nr = 10
-nr = as.integer(nr)
-rs = 0
-rs = as.integer(rs)
-sklearn$inspection$permutation_importance(lake_models[[n]], train_f, 
-	train_l, n_repeats=nr, random_state=rs)  
-
-
-explainer <- shapr(train_f, lake_models[[n]])
-
-```{python}
-
-1+1
-
-```
-
-n=1
-plot(lake_models[[n]])
-plot(pred_train[[n]])
-plot(pred_test[[n]])
-
-ind = sample(nrow(train_f), 500)
-train_f_sub = train_f[ind, ]
-
-ks = kernelshap(
-    train_f_sub, 
-    pred_fun = function(X) as.numeric(predict(lake_models[[n]], X, batch_size = nrow(X))), 
-    bg_X = train_f_sub
-  )
-
-
-)
-ks
-
-
-el = lime:lime(train_f, lake_models[[n]])
-explain(test_f, el, n_features = 12)
+m1 = build_and_compile_model()
+train_on_batch(m1, lake_data3D_x[1:(lags+1),,], lake_data3D_y[1:(lags+1),,])
+load_model_weights_tf(m1, "./test1/lm.ckpt")

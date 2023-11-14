@@ -15,6 +15,14 @@ server <- function(input, output) {
   #Readable dates for plotting
   lake_dates = vector("list", n_lakes)
 
+  #Get the rain forecast data:
+  fut_precip = as.data.frame(weather_forecast(location =  
+    c(43.0930, -89.3727), daily="precipitation_sum") )
+  colnames(fut_precip) = c("time", "rn")
+  fut_precip$rn = fut_precip$rn / 25.4 #Convert mm to inches
+
+  lagsp = dim(fut_precip)[1]
+
   #Load the historic data sets
   lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
   lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
@@ -61,13 +69,16 @@ server <- function(input, output) {
     #rain input. 
     lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level), 
       data.frame(rn=rn.tmp$rn), lags)
-  }
 
-  #Get the rain forecast data:
-  fut_precip = as.data.frame(weather_forecast(location =  
-    c(43.0930, -89.3727), daily="precipitation_sum") )
-  colnames(fut_precip) = c("time", "rn")
-  fut_precip$rn = fut_precip$rn / 25.4 #Convert mm to inches
+    #For the RNN. The lags are the number of days into the future we 
+    #wish to forecast.
+    scale_ll = c ( mean(lake.tmp$level), sqrt(var(lake.tmp$level)) )
+    scale_rn = c ( mean(rn.tmp$rn), sqrt(var(rn.tmp$rn)) )
+    lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
+      (lake.tmp$level - scale_ll[1])/scale_ll[2] ),
+      data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
+  
+  }
 
   ##############################################################
   #PART 2: Forecasting with GAMs
@@ -82,10 +93,11 @@ server <- function(input, output) {
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
-  #Check to see if the RNN has already been updated and 
-  #predictions made: 
-  updateLSTM(lake_data, fut_precip)
+  #Check to see if the RNN  exists, and whether it has already 
+  #been updated and predictions made: 
+  updateModelLSTM(lake_data_lstm)
 
+  load(file = "todays_forecast.var")
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
