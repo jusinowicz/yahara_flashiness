@@ -14,6 +14,7 @@ server <- function(input, output) {
   lake_data = vector("list", n_lakes)
   #Readable dates for plotting
   lake_dates = vector("list", n_lakes)
+  scale_ll = vector("list", n_lakes)
 
   #Get the rain forecast data:
   fut_precip = as.data.frame(weather_forecast(location =  
@@ -72,10 +73,10 @@ server <- function(input, output) {
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
-    scale_ll = c ( mean(lake.tmp$level), sqrt(var(lake.tmp$level)) )
+    scale_ll[[n]] = c ( mean(lake.tmp$level), sqrt(var(lake.tmp$level)) )
     scale_rn = c ( mean(rn.tmp$rn), sqrt(var(rn.tmp$rn)) )
     lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
-      (lake.tmp$level - scale_ll[1])/scale_ll[2] ),
+      (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2] ),
       data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
   
   }
@@ -98,6 +99,14 @@ server <- function(input, output) {
   updateModelLSTM(lake_data_lstm)
 
   load(file = "todays_forecast.var")
+  for(n in 1:n_lakes){ 
+
+    lake_models_forecast[[n]] = data.frame(time = fut_precip$time, 
+              level = 
+              unlist(lake_models_forecast[[n]])*scale_ll[[n]][2]+
+              scale_ll[[n]][1] )
+
+  }
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
@@ -155,9 +164,12 @@ server <- function(input, output) {
 
   output$pred_plot1=renderPlot({
 
-      ggplot( data = pred_lakes[[1]]) + 
-      geom_line(aes(x = time, y=level)) +
-      geom_ribbon(aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      ggplot( ) + 
+      geom_line(data = pred_lakes[[1]], aes(x = time, y=level),col = "red") +
+      geom_ribbon(data = pred_lakes[[1]], 
+        aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      geom_line(data = lake_models_forecast[[1]], 
+        aes(x = time, y=level),col = "blue")+
       ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.2, 
         max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.2)+
       theme_minimal() + theme(text=element_text(size=21)) +
@@ -193,6 +205,8 @@ server <- function(input, output) {
       geom_line(data = pred_lakes[[1]], aes(x = time, y=level), col="red") +
       geom_ribbon(data = pred_lakes[[1]], 
         aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      geom_line(data = lake_models_forecast[[1]], 
+        aes(x = time, y=level),col = "blue")+
       ylim(4, max(lake_data[[1]]$level)+max(lake_data[[1]]$level)*.2 )+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
@@ -249,10 +263,13 @@ server <- function(input, output) {
       #Plot the time series of predictions
 
   output$pred_plot2=renderPlot({
-      ggplot( data = pred_lakes[[2]]) + 
-      geom_line(aes(x = time, y=level)) +
-      geom_ribbon(aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
-        ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.2, 
+      ggplot( ) + 
+      geom_line(data = pred_lakes[[2]], aes(x = time, y=level),col="red") +
+      geom_line(data = lake_models_forecast[[2]], 
+        aes(x = time, y=level),col = "blue")+
+      geom_ribbon(data = pred_lakes[[2]], 
+        aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+      ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.2, 
         max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*.2)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
@@ -285,6 +302,8 @@ server <- function(input, output) {
       ggplot( ) +
       geom_line(data = lake_data[[2]], aes(x = dates, y=level) ) +
       geom_line(data = pred_lakes[[2]], aes(x = time, y=level), col="red") +
+      geom_line(data = lake_models_forecast[[2]], 
+        aes(x = time, y=level),col = "blue")+
       geom_ribbon(data = pred_lakes[[2]], 
         aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
       ylim(1, max(lake_data[[2]]$level)+max(lake_data[[2]]$level)*.1 )+
