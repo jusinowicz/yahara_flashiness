@@ -135,9 +135,9 @@ n_lakes = 2
     #wish to forecast.
     scale_ll = c ( mean(lake.tmp$level), sqrt(var(lake.tmp$level)) )
     scale_rn = c ( mean(rn.tmp$rn), sqrt(var(rn.tmp$rn)) )
-    lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
+    lake_data[[n]] = make.flashiness.object(data.frame(level= 
       (lake.tmp$level - scale_ll[1])/scale_ll[2] ),
-      data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
+      data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lags, auto=F, orders=lags)
   
   }
 
@@ -199,7 +199,7 @@ for(n in 1:n_lakes){
 	# Create a callback that saves the model's weights
 	cp_callback = callback_model_checkpoint(
 	  filepath = checkpoint_path,
-	  save_weights_only = TRUE,
+	  #save_weights_only = TRUE,
 	  verbose = 1
 	)
 
@@ -222,23 +222,6 @@ for(n in 1:n_lakes){
 	lake_compare = ld_tmp [(ntime_full), ]
 	ld_tmp = ld_tmp[1:(ntime_full-2), ]
 
-	#Standardize both of these data sets (separately!) 
-	#(mean =0, var = 1)
-	scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
-	ld_tmp = scale(ld_tmp)
-	
-	scale_test = matrix(
-				c( mean(unlist(lake_test[1:(lags+1)])),
-					mean(unlist(lake_test[(lags+2):(2*lags)])),
-					sqrt(var(unlist(lake_test[1:(lags+1)]))),
-					sqrt(var(unlist(lake_test[(lags+2):(2*lags)])))),
-				2,2)
-
-	lake_test[1:(lags+1)] = (lake_test[1:(lags+1)] - 
-		scale_test[1,1])/scale_test[2,1]
-	lake_test[(lags+2):(2*lags)] = (lake_test[(lags+2):(2*lags)] - 
-		scale_test[2,1])/scale_test[2,2]
-	
 	#Split the remaining data into X and Y for training.
 	#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
 	#and Y will be lags:100. 
@@ -324,22 +307,6 @@ checkpoint_path = "./test1/lm.ckpt"
 	lake_compare = ld_tmp [(ntime_full), ]
 	ld_tmp = ld_tmp[1:(ntime_full-2), ]
 
-	#Standardize both of these data sets (separately!) 
-	#(mean =0, var = 1)
-	scale_ld = cbind(colMeans(ld_tmp), diag(var(ld_tmp)) )
-	ld_tmp = scale(ld_tmp)
-	
-	scale_test = matrix(
-				c( mean(unlist(lake_test[1:(lags+1)])),
-					mean(unlist(lake_test[(lags+2):(2*lags)])),
-					sqrt(var(unlist(lake_test[1:(lags+1)]))),
-					sqrt(var(unlist(lake_test[(lags+2):(2*lags)])))),
-				2,2)
-
-	lake_test[1:(lags+1)] = (lake_test[1:(lags+1)] - 
-		scale_test[1,1])/scale_test[2,1]
-	lake_test[(lags+2):(2*lags)] = (lake_test[(lags+2):(2*lags)] - 
-		scale_test[2,1])/scale_test[2,2]
 	
 	#Split the remaining data into X and Y for training.
 	#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
@@ -363,5 +330,10 @@ checkpoint_path = "./test1/lm.ckpt"
 			ncol(lake_test)/2,2) )
 
 m1 = build_and_compile_model()
-train_on_batch(m1, lake_data3D_x[1:(lags+1),,], lake_data3D_y[1:(lags+1),,])
+train_on_batch(m1, x= lake_data3D_x, y=lake_data3D_y)
 load_model_weights_tf(m1, "./test1/lm.ckpt")
+
+lake_forecast = m1  %>%
+	  predict(lake_data3D_test, batch_size = 1) %>%
+	  .[, , 1]
+
