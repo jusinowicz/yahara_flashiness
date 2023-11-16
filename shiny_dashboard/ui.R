@@ -47,7 +47,23 @@ ui <- dashboardPage(
           column(width = 3,
             box(
               width = 12, 
-              title = "About this graph"
+              title = "About the graphs",
+              p("The 7-day forecast of lake level projected by ",
+              span("GAMM", style = "color:red"),
+              " and ",
+              span("Machine Learning (RNN)", style = "color:blue"),
+              "models. "),
+              p("The 7-day forecast can also be seen compared to the
+                historical time series of lake level."),
+              p("The boxes above highlight peak upcoming rain events and 
+                lake levels. Colors indicate whether lake 
+                levels are within",
+                span("normal", style = "color:aqua"), 
+                " levels or will exceed the ",
+                span("10-year", style = "color:orange"),
+                " or the ",
+                span("100-year", style = "color:red"),
+                " flood levels." )
 
             )
             # Give a more historical perspective on the data:
@@ -100,7 +116,23 @@ ui <- dashboardPage(
           column(width = 3,
             box(
               width = 12, 
-              title = "About this graph"
+              title = "About the graphs",
+              p("The 7-day forecast of lake level projected by ",
+              span("GAMM", style = "color:red"),
+              " and ",
+              span("Machine Learning (RNN)", style = "color:blue"),
+              "models. "),
+              p("The 7-day forecast can also be seen compared to the
+              historical time series of lake level."),
+              p("The boxes above highlight peak upcoming rain events and 
+                lake levels. Colors indicate whether lake 
+                levels are within",
+                span("normal", style = "color:aqua"), 
+                " levels or will exceed the ",
+                span("10-year", style = "color:orange"),
+                " or the ",
+                span("100-year", style = "color:red"),
+                " flood levels." )
 
             )
             # Give a more historical perspective on the data:

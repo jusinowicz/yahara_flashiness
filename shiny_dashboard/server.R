@@ -1,5 +1,6 @@
 server <- function(input, output) {
 
+  withProgress(message = 'Retrieving data', value = 0, {
   ##############################################################
   #PART 1: Data processing
   ##############################################################
@@ -16,6 +17,7 @@ server <- function(input, output) {
   lake_dates = vector("list", n_lakes)
   scale_ll = vector("list", n_lakes)
 
+  incProgress(1/4, detail="Getting forecast")
   #Get the rain forecast data:
   fut_precip = as.data.frame(weather_forecast(location =  
     c(43.0930, -89.3727), daily="precipitation_sum") )
@@ -24,6 +26,7 @@ server <- function(input, output) {
 
   lagsp = dim(fut_precip)[1]
 
+  incProgress(2/4, detail="Loading historic data")
   #Load the historic data sets
   lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
   lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
@@ -59,6 +62,10 @@ server <- function(input, output) {
     #colnames(lake.tmp) = "level"
     rn.tmp = remove.days(lake_data[[n]][,c(1,3)], year(real_start[[n]] ) )
     #colnames(rn.tmp) = "rn"
+    #Check for and remove NAs: 
+    rwNA = rowSums(is.na(cbind(lake.tmp,rn.tmp))) 
+    lake.tmp = lake.tmp[rwNA<1,]
+    rn.tmp = rn.tmp[rwNA<1,]
 
     #Keep the dates
     lake_dates[[n]] = lake.tmp$time 
@@ -73,29 +80,36 @@ server <- function(input, output) {
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
-    scale_ll[[n]] = c ( mean(lake.tmp$level), sqrt(var(lake.tmp$level)) )
-    scale_rn = c ( mean(rn.tmp$rn), sqrt(var(rn.tmp$rn)) )
+    scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm = T), sqrt(var(lake.tmp$level,na.rm = T)) )
+    scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
     lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
       (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2] ),
       data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
   
-  }
+    incProgress((n+2)/4, detail="Final melding")
 
+  }
+})
   ##############################################################
   #PART 2: Forecasting with GAMs
   ##############################################################
+  withProgress(message = 'Forecasting GAMMs', value = 0, {
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
+  incProgress(1/2, detail="Update models")
   updateModel(lake_data,model_form)
-
+  
   #Predict the future lake-level response from the saved GAMs
+  incProgress(2/2, detail="Get forecast")
   pred_lakes = predictFlashGAM(lake_data, fut_precip)
-
+  })
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
   #Check to see if the RNN  exists, and whether it has already 
-  #been updated and predictions made: 
+  #been updated and predictions made:
+  withProgress(message = 'Forecasting RNN (might take awhile)', value = 0, {
+ 
   updateModelLSTM(lake_data_lstm)
 
   load(file = "todays_forecast.var")
@@ -107,9 +121,11 @@ server <- function(input, output) {
               scale_ll[[n]][1] )
 
   }
+})
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
+
   #Add the readable dates back on for plotting
   for (n in 1:n_lakes){
     lake_data[[n]]$dates = lake_dates[[n]] 
@@ -118,6 +134,15 @@ server <- function(input, output) {
   ##############################################################
   #Mendota
   ##############################################################
+  #Max lake level
+  mpm = max(pred_lakes[[1]]$level)
+  col_use  = "aqua"
+  #Check against the flood levels: 
+  if( mpm < thresh_10[1] ) { col_use = flash_col[1]}
+  if( mpm >= thresh_10[1] && mr < thresh_100[1] ){ 
+    col_use = flash_col[2]}
+  if( mpm >= thresh_100[1] ){ col_use = flash_col[3]}
+
 
    #The maximum rainfall in the upcoming days 
     output$max_rain = renderInfoBox({
@@ -127,19 +152,18 @@ server <- function(input, output) {
      "Peak 7-day rainfall (in)",
       value = formatC(mr, digits = 1, format = "f"),
       icon = icon("cloud-rain"),
-      color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+      color = col_use #if (mr >= year10) "yellow" else "aqua"
     )
   })  
 
     #The peak lake-level 
     output$max_peak_men = renderInfoBox({
-      mpm = max(pred_lakes[[1]]$level)
 
       infoBox(
         "Peak 7-day lake (ft)",
         value = formatC(mpm, digits = 1, format = "f"),
         icon = icon("water"),
-        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+        color = col_use #if (mr >= year10) "yellow" else "aqua"
       )
     })  
  
@@ -156,7 +180,7 @@ server <- function(input, output) {
         "95% CI",
         value = formatC(pcmen, digits = 1, format = "f"),
         icon = icon("chart-line"),
-        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+        color = col_use #if (mr >= year10) "yellow" else "aqua"
       )
     })  
 
@@ -165,16 +189,23 @@ server <- function(input, output) {
   output$pred_plot1=renderPlot({
 
       ggplot( ) + 
-      geom_line(data = pred_lakes[[1]], aes(x = time, y=level),col = "red") +
+      geom_line(data = pred_lakes[[1]], aes(x = time, y=level), 
+        linetype = "dotted", col = "red") +
+      geom_point(data = pred_lakes[[1]], aes(x = time, y=level), 
+        col = "red") +
       geom_ribbon(data = pred_lakes[[1]], 
         aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
       geom_line(data = lake_models_forecast[[1]], 
+        aes(x = time, y=level),col = "blue",linetype = "dotted")+
+      geom_point(data = lake_models_forecast[[1]], 
         aes(x = time, y=level),col = "blue")+
       ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.2, 
         max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.2)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
-      ylab("Lake level (ft) ") 
+      ylab("Lake level (ft) ")+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
    } )
 
  #Plot the historical and prediction time series
@@ -200,7 +231,7 @@ server <- function(input, output) {
 
   output$full_plot1=renderPlot({
 
-      ggplot( ) +
+      ggplot( ) +      
       geom_line(data = lake_data[[1]], aes(x = dates, y=level) ) +
       geom_line(data = pred_lakes[[1]], aes(x = time, y=level), col="red") +
       geom_ribbon(data = pred_lakes[[1]], 
@@ -209,15 +240,25 @@ server <- function(input, output) {
         aes(x = time, y=level),col = "blue")+
       ylim(4, max(lake_data[[1]]$level)+max(lake_data[[1]]$level)*.2 )+
       theme_minimal() + theme(text=element_text(size=21)) +
-      ggtitle("Forecasted lake level") + xlab("Date")+
+      xlab("Date")+
       ylab("Lake level (ft) ") +
-      xlim(low_limx$limx, current_date+8)
+      xlim(low_limx$limx, current_date+8)+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
 
    } )
 
 ##############################################################
 #Monona
 ##############################################################
+#Max lake level
+mpm2 = max(pred_lakes[[2]]$level)
+col_use2  = "aqua"
+#Check against the flood levels: 
+if( mpm2 < thresh_10[1] ) { col_use2 = flash_col[1]}
+if( mpm2 >= thresh_10[1] && mpm2 < thresh_100[1] ){ 
+  col_use2 = flash_col[2]}
+if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
 
  #The maximum rainfall in the upcoming days 
     output$max_rain2 = renderInfoBox({
@@ -227,19 +268,18 @@ server <- function(input, output) {
      "Peak 7-day rainfall (in)",
       value = formatC(mr, digits = 1, format = "f"),
       icon = icon("cloud-rain"),
-      color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+      color = col_use2 #if (mr >= year10) "yellow" else "aqua"
     )
   })  
 
     #The peak lake-level 
     output$max_peak_mon = renderInfoBox({
-      mpm = max(pred_lakes[[2]]$level)
 
       infoBox(
         "Peak 7-day lake (ft)",
-        value = formatC(mpm, digits = 1, format = "f"),
+        value = formatC(mpm2, digits = 1, format = "f"),
         icon = icon("water"),
-        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+        color = col_use2 #if (mr >= year10) "yellow" else "aqua"
       )
     })  
  
@@ -256,7 +296,7 @@ server <- function(input, output) {
         "95% CI",
         value = formatC(pcmon, digits = 1, format = "f"),
         icon = icon("chart-line"),
-        color = "aqua" #if (mr >= year10) "yellow" else "aqua"
+        color = col_use2 #if (mr >= year10) "yellow" else "aqua"
       )
     })  
 
@@ -264,16 +304,23 @@ server <- function(input, output) {
 
   output$pred_plot2=renderPlot({
       ggplot( ) + 
-      geom_line(data = pred_lakes[[2]], aes(x = time, y=level),col="red") +
+      geom_line(data = pred_lakes[[2]], aes(x = time, y=level),
+        col="red", linetype = "dotted") +
+      geom_point(data = pred_lakes[[2]], aes(x = time, y=level),
+        col="red") +
       geom_line(data = lake_models_forecast[[2]], 
-        aes(x = time, y=level),col = "blue")+
+        aes(x = time, y=level),col = "blue", linetype = "dotted") +
+      geom_point(data = lake_models_forecast[[2]], 
+        aes(x = time, y=level),col = "blue") +
       geom_ribbon(data = pred_lakes[[2]], 
         aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
       ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.2, 
         max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*.2)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
-      ylab("Lake level (ft) ") 
+      ylab("Lake level (ft) ")+
+      geom_hline(yintercept=thresh_10[2], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[2], col="red", linetype = "dotted")
    } )
 
 #Plot the historical and prediction time series
@@ -308,9 +355,11 @@ server <- function(input, output) {
         aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
       ylim(1, max(lake_data[[2]]$level)+max(lake_data[[2]]$level)*.1 )+
       theme_minimal() + theme(text=element_text(size=21)) +
-      ggtitle("Forecasted lake level") + xlab("Date")+
+      xlab("Date")+
       ylab("Lake level (ft) ") +
-      xlim(low_limx2$limx2, current_date+8)
+      xlim(low_limx2$limx2, current_date+8)+
+      geom_hline(yintercept=thresh_10[2], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[2], col="red", linetype = "dotted")
 
    } )
 

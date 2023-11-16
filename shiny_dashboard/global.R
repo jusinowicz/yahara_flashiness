@@ -50,7 +50,19 @@ model_form [[2]] = "level ~
   s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
+#Flooding thresholds from Usinowicz et al. 2016
+#For Mendota, gauge at 839.96 ft. 
+#			10% = 259.64m = 851.84 ft.
+#			100% = 259.82m = 852.43 ft
+#For Monona, gauge at 839.86 
+#			10% = 258.17 = 847.01 ft
+#			100% = 258.40 = 847.77 ft.
 
+thresh_10 = c((851.84 - 839.96), (847.01 - 839.96))
+thresh_100 = c((852.43 - 839.86), (847.77 - 839.86))
+
+#To color code max lake level, according to flood threat level
+flash_col= c("aqua", "orange", "red")
 
 ##############################################################
 #Global functions 
