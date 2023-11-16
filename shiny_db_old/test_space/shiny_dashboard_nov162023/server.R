@@ -1,6 +1,5 @@
 server <- function(input, output) {
 
-  withProgress(message = 'Retrieving data', value = 0, {
   ##############################################################
   #PART 1: Data processing
   ##############################################################
@@ -17,7 +16,6 @@ server <- function(input, output) {
   lake_dates = vector("list", n_lakes)
   scale_ll = vector("list", n_lakes)
 
-  incProgress(1/4, detail="Getting forecast")
   #Get the rain forecast data:
   fut_precip = as.data.frame(weather_forecast(location =  
     c(43.0930, -89.3727), daily="precipitation_sum") )
@@ -26,7 +24,6 @@ server <- function(input, output) {
 
   lagsp = dim(fut_precip)[1]
 
-  incProgress(2/4, detail="Loading historic data")
   #Load the historic data sets
   lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
   lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
@@ -86,42 +83,40 @@ server <- function(input, output) {
       (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2] ),
       data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
   
-    incProgress((n+2)/4, detail="Final melding")
 
   }
-})
   ##############################################################
   #PART 2: Forecasting with GAMs
   ##############################################################
-  withProgress(message = 'Forecasting GAMMs', value = 0, {
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
-  incProgress(1/2, detail="Update models")
   updateModel(lake_data,model_form)
   
   #Predict the future lake-level response from the saved GAMs
-  incProgress(2/2, detail="Get forecast")
   pred_lakes = predictFlashGAM(lake_data, fut_precip)
-  })
+ 
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
   #Check to see if the RNN  exists, and whether it has already 
   #been updated and predictions made:
-  withProgress(message = 'Forecasting RNN (might take awhile)', value = 0, {
  
   updateModelLSTM(lake_data_lstm)
 
   load(file = "todays_forecast.var")
-  for(n in 1:n_lakes){ 
+  for(n in 1:n_lakes){
+    #Because the forecasts are generated as a kind of posterior 
+    #draw, get the average and the SE.  
+    lm_tmp = lake_models_forecast[[n]]*scale_ll[[n]][2]+
+              scale_ll[[n]][1] 
+    lm_m = rowMeans(lm_tmp)
+    lm_se = sqrt( apply((lm_tmp),1,var) )
 
     lake_models_forecast[[n]] = data.frame(time = fut_precip$time, 
-              level = 
-              unlist(lake_models_forecast[[n]])*scale_ll[[n]][2]+
-              scale_ll[[n]][1] )
+              level = lm_m, se = lm_se )
 
-  }
-})
+   }
+
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
@@ -194,7 +189,7 @@ server <- function(input, output) {
       geom_point(data = pred_lakes[[1]], aes(x = time, y=level), 
         col = "red") +
       geom_ribbon(data = pred_lakes[[1]], 
-        aes(x = time, ymin = level-se, ymax = level+se), alpha = 0.2)+
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), alpha = 0.2)+
       geom_line(data = lake_models_forecast[[1]], 
         aes(x = time, y=level),col = "blue",linetype = "dotted")+
       geom_point(data = lake_models_forecast[[1]], 
