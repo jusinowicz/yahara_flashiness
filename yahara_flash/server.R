@@ -108,9 +108,9 @@ server <- function(input, output) {
   ##############################################################
   #Check to see if the RNN  exists, and whether it has already 
   #been updated and predictions made:
-  withProgress(message = 'Forecasting RNN (might take awhile)', value = 0, {
+  withProgress(message = 'Getting forecast', value = 0, {
  
-  updateModelLSTM(lake_data_lstm)
+  #updateModelLSTM(lake_data_lstm)
 
   load(file = "todays_forecast.var")
   for(n in 1:n_lakes){
