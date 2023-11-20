@@ -112,7 +112,8 @@ server <- function(input, output) {
  
   #updateModelLSTM(lake_data_lstm)
 
-  load(file = "todays_forecast.var")
+    giturl = "https://github.com/jusinowicz/yahara_flashiness/blob/master/yahara_flash_local/todays_forecast.var"
+  load(url(giturl))
   for(n in 1:n_lakes){
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
