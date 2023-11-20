@@ -438,10 +438,14 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 						.[, , 1]
 			}
 
+		  write.table(lake_models_forecast[[n]], 
+		  	file = paste("lakemodel_",n,"_forecast.csv", sep=""), sep=",")
+
+
 
 	}
 
-	save(file = "todays_forecast.var", lake_models_forecast )
+	#save(file = "todays_forecast.var", lake_models_forecast, compression = F)
 
 }
 
