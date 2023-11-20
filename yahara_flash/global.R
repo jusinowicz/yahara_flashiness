@@ -34,6 +34,9 @@ current_date = ymd( Sys.Date() )
 lake_data = vector("list", n_lakes) #GAM formatted
 lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 
+#Forecasts:
+lake_models_forecast = vector("list", n_lakes) #LSTM formatted
+
 #Max lags in rain and lake-level data
 lags = 10
 

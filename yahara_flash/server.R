@@ -111,12 +111,13 @@ server <- function(input, output) {
   withProgress(message = 'Getting forecast', value = 0, {
  
   #updateModelLSTM(lake_data_lstm)
-
-  load(url(giturl))
+ 
   for(n in 1:n_lakes){
-    giturl = paste("https://github.com/jusinowicz/yahara_flashiness/blob/master/yahara_flash_local/lakemodel_",n,"_forecast.csv",
+
+    #This is the github URL for the data. 
+    giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/lakemodel_",n,"_forecast.csv",
         sep ="")
-    mcsv = read.table(file=url(giturl))
+    lake_models_forecast[[n]] = read.csv(curl(giturl))  
 
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
