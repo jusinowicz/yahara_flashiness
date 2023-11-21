@@ -5,6 +5,7 @@ library(lubridate)
 #Data processing
 library(nasapower) #API for NASA data, for precipitation
 library(openmeteo)
+library(curl)
 
 #misc data processing and stats
 source("./functions/flash_functions.R")
