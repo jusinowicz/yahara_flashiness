@@ -336,23 +336,23 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 	build_and_compile_model = function() {
 		model = keras_model_sequential() %>%
 		bidirectional(
-		layer_lstm(units = 64, # size of the layer
+		layer_lstm(units = 128, # size of the layer
 			activation = 'relu',
 			# batch size, timesteps, features
 			batch_input_shape = c(1, lagsp, 2), 
 			return_sequences = TRUE,
 			stateful = TRUE) ) %>%
 		# fraction of the units to drop for the linear transformation of the inputs
-		layer_dropout(rate = 0.55) %>%
-		layer_lstm(units = 64,
+		layer_dropout(rate = 0.65) %>%
+		layer_lstm(units =128,
              return_sequences = TRUE,
              stateful = TRUE) %>%
-		layer_dropout(rate = 0.55) %>%
+		layer_dropout(rate = 0.65) %>%
 		time_distributed(layer_dense(units = 1))
 
 	  model %>% compile(
 	    loss = 'mean_absolute_error',
-	    optimizer = optimizer_adam(0.001)
+	    optimizer = optimizer_adam()
 	  )
 
 	  model
