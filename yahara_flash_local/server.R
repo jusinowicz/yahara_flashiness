@@ -112,8 +112,12 @@ server <- function(input, output) {
  
   updateModelLSTM(lake_data_lstm)
 
-  load(file = "todays_forecast.var")
+  #load(file = "todays_forecast.var")
+  
+
   for(n in 1:n_lakes){
+    giturl = paste("./lakemodel_",n,"_forecast.csv",sep ="")
+    lake_models_forecast[[n]] = tail(read.csv((giturl),lagsp) )  
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
     lm_tmp = lake_models_forecast[[n]]*scale_ll[[n]][2]+

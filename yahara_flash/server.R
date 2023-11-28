@@ -117,7 +117,7 @@ server <- function(input, output) {
     #This is the github URL for the data. 
     giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/lakemodel_",n,"_forecast.csv",
         sep ="")
-    lake_models_forecast[[n]] = read.csv(curl(giturl))  
+    lake_models_forecast[[n]] = tail(read.csv(curl(giturl),lagsp) )  
 
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  

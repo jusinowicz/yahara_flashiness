@@ -336,18 +336,18 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 	build_and_compile_model = function() {
 		model = keras_model_sequential() %>%
 		bidirectional(
-		layer_lstm(units = 128, # size of the layer
+		layer_lstm(units = 32, # size of the layer
 			activation = 'relu',
 			# batch size, timesteps, features
 			batch_input_shape = c(1, lagsp, 2), 
 			return_sequences = TRUE,
 			stateful = TRUE) ) %>%
 		# fraction of the units to drop for the linear transformation of the inputs
-		layer_dropout(rate = 0.65) %>%
-		layer_lstm(units =128,
+		layer_dropout(rate = 0.55) %>%
+		layer_lstm(units =32,
              return_sequences = TRUE,
              stateful = TRUE) %>%
-		layer_dropout(rate = 0.65) %>%
+		layer_dropout(rate = 0.55) %>%
 		time_distributed(layer_dense(units = 1))
 
 	  model %>% compile(
@@ -438,8 +438,24 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 						.[, , 1]
 			}
 
-			write.table(lake_models_forecast[[n]], 
-				file = paste("lakemodel_",n,"_forecast.csv", sep=""), sep=",")
+			#This will keep adding the newest forecasts to the same file to keep
+			#a rolling table of past predictions.
+			tbl_file = paste("lakemodel_",n,"_forecast.csv", sep="")
+			if(exists(tbl_file)){
+				tbl_tmp = read.csv(tbl_file)
+				tbl_row = dim(tbl_tmp)[1]
+				tbl_col = dim(tbl_tmp)[2]
+				#Add a new row
+				tbl_tmp = rbind(tbl_tmp, matrix(0,tbl_row,tbl_col))
+				#Overwrite the existing data in the window 
+				#with the new predictions
+				tbl_tmp[( tbl_dim-(lagsp-2) ):(tbl_dim+1),] = lake_models_forecast[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",")
+			
+			}else {
+				#If the file does not already exist
+				write.table(tbl_tmp, file = tbl_file, sep=",")
+			}
 
 
 
