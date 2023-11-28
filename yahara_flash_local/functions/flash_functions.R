@@ -454,6 +454,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 			
 			}else {
 				#If the file does not already exist
+				tbl_tmp = lake_models_forecast[[n]]
 				write.table(tbl_tmp, file = tbl_file, sep=",")
 			}
 

@@ -117,7 +117,9 @@ server <- function(input, output) {
 
   for(n in 1:n_lakes){
     giturl = paste("./lakemodel_",n,"_forecast.csv",sep ="")
-    lake_models_forecast[[n]] = tail(read.csv((giturl),lagsp) )  
+    lake_models_forecast[[n]] = tail(read.csv((giturl)),lagsp)  
+    print(lagsp)
+    print(dim(lake_models_forecast[[n]]))
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
     lm_tmp = lake_models_forecast[[n]]*scale_ll[[n]][2]+
