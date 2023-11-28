@@ -118,8 +118,7 @@ server <- function(input, output) {
   for(n in 1:n_lakes){
     giturl = paste("./lakemodel_",n,"_forecast.csv",sep ="")
     lake_models_forecast[[n]] = tail(read.csv((giturl)),lagsp)  
-    print(lagsp)
-    print(dim(lake_models_forecast[[n]]))
+
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
     lm_tmp = lake_models_forecast[[n]]*scale_ll[[n]][2]+
@@ -129,6 +128,7 @@ server <- function(input, output) {
 
     lake_models_forecast[[n]] = data.frame(time = fut_precip$time, 
               level = lm_m, se = lm_se )
+    print(lake_models_forecast[[n]])
 
    }
 })
@@ -211,8 +211,8 @@ server <- function(input, output) {
         aes(x = time, y=level),col = "blue")+
       geom_ribbon(data =lake_models_forecast[[1]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
-      ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.2, 
-        max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.2)+
+      ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.4, 
+        max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.4)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
       ylab("Lake level (ft) ")+
@@ -252,7 +252,7 @@ server <- function(input, output) {
         aes(x = time, y=level),col = "blue")+
       geom_ribbon(data =lake_models_forecast[[1]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill ="blue", alpha = 0.2)+
-      ylim(4, max(lake_data[[1]]$level)+max(lake_data[[1]]$level)*.2 )+
+      ylim(4, max(lake_data[[1]]$level)+max(lake_data[[1]]$level)*.4 )+
       theme_minimal() + theme(text=element_text(size=21)) +
       xlab("Date")+
       ylab("Lake level (ft) ") +
@@ -330,8 +330,8 @@ if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
         aes(x = time, y=level),col = "blue") +
       geom_ribbon(data =lake_models_forecast[[2]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
-      ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.2, 
-        max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*.2)+
+      ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.4, 
+        max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*.4)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
       ylab("Lake level (ft) ")+
@@ -371,7 +371,7 @@ if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill= "red", alpha = 0.2)+
       geom_ribbon(data = lake_models_forecast[[2]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96),fill ="blue", alpha = 0.2)+
-      ylim(1, max(lake_data[[2]]$level)+max(lake_data[[2]]$level)*.1 )+
+      ylim(1, max(lake_data[[2]]$level)+max(lake_data[[2]]$level)*.4 )+
       theme_minimal() + theme(text=element_text(size=21)) +
       xlab("Date")+
       ylab("Lake level (ft) ") +

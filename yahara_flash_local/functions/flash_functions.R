@@ -412,7 +412,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 			#Build the model
 
 			#If it exists, load it. Otherwise, compile it fresh:  
-			if(exists(checkpoint_path)){ 
+			if(file.exists(checkpoint_path)){ 
 				lake_models_lstm[[n]]  = load_model_tf(paste(checkpoint_path) ) 
 			}else {  
 				lake_models_lstm[[n]]  = build_and_compile_model()
@@ -441,7 +441,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 			#This will keep adding the newest forecasts to the same file to keep
 			#a rolling table of past predictions.
 			tbl_file = paste("lakemodel_",n,"_forecast.csv", sep="")
-			if(exists(tbl_file)){
+			if(file.exists(tbl_file)){
 				tbl_tmp = read.csv(tbl_file)
 				tbl_row = dim(tbl_tmp)[1]
 				tbl_col = dim(tbl_tmp)[2]

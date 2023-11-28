@@ -412,7 +412,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 			#Build the model
 
 			#If it exists, load it. Otherwise, compile it fresh:  
-			if(exists(checkpoint_path)){ 
+			if(file.exists(checkpoint_path)){ 
 				lake_models_lstm[[n]]  = load_model_tf(paste(checkpoint_path) ) 
 			}else {  
 				lake_models_lstm[[n]]  = build_and_compile_model()
