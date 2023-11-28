@@ -343,11 +343,11 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 			return_sequences = TRUE,
 			stateful = TRUE) ) %>%
 		# fraction of the units to drop for the linear transformation of the inputs
-		layer_dropout(rate = 0.6) %>%
+		layer_dropout(rate = 0.65) %>%
 		layer_lstm(units =64,
              return_sequences = TRUE,
              stateful = TRUE) %>%
-		layer_dropout(rate = 0.6) %>%
+		layer_dropout(rate = 0.65) %>%
 		time_distributed(layer_dense(units = 1))
 
 	  model %>% compile(
@@ -450,12 +450,12 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 				#Overwrite the existing data in the window 
 				#with the new predictions
 				tbl_tmp[( tbl_dim-(lagsp-2) ):(tbl_dim+1),] = lake_models_forecast[[n]]
-				write.table(tbl_tmp, file = tbl_file, sep=",")
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
 			
 			}else {
 				#If the file does not already exist
 				tbl_tmp = lake_models_forecast[[n]]
-				write.table(tbl_tmp, file = tbl_file, sep=",")
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
 			}
 
 
