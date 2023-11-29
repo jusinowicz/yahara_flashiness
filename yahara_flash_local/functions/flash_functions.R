@@ -449,7 +449,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 				tbl_tmp = rbind(tbl_tmp, matrix(0,tbl_row,tbl_col))
 				#Overwrite the existing data in the window 
 				#with the new predictions
-				tbl_tmp[( tbl_dim-(lagsp-2) ):(tbl_dim+1),] = lake_models_forecast[[n]]
+				tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = lake_models_forecast[[n]]
 				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
 			
 			}else {
