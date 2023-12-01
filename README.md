@@ -2,7 +2,7 @@ The goal of this repository is to run a shiny app server which outputs predictio
 in the Yahara Watershed in Southern Wisconsin. At the moment it is only implemented for lakes Mendota and 
 Monona, which border Madison, WI. 
 
-#yahara_flash
+##yahara_flash
 The code to run the shiny app is in the folder yahara_flash. The app itself is currently hosted at
 https://ecotheory.shinyapps.io/yahara_flash/. The app mostly loads data and plots it. 
 
