@@ -446,7 +446,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 				tbl_row = dim(tbl_tmp)[1]
 				tbl_col = dim(tbl_tmp)[2]
 				#Add a new row
-				tbl_tmp = rbind(tbl_tmp, matrix(0,tbl_row,tbl_col))
+				tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
 				#Overwrite the existing data in the window 
 				#with the new predictions
 				tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = lake_models_forecast[[n]]
