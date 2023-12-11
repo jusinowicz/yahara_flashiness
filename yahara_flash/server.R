@@ -107,16 +107,16 @@ server <- function(input, output) {
     giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/gam_",n,"_forecast.csv",
         sep ="")
     pred_lakes[[n]] = tail(read.csv(curl(giturl)),lagsp )  
-    print(lagsp)
-    print(dim(pred_lakes[[n]]))
-    #Because the forecasts are generated as a kind of posterior 
-    #draw, get the average and the SE.  
-    lm_tmp = pred_lakes[[n]]
-    lm_m = rowMeans(lm_tmp)
-    lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
+    # print(lagsp)
+    print((pred_lakes[[n]]))
+    # #Because the forecasts are generated as a kind of posterior 
+    # #draw, get the average and the SE.  
+    # lm_tmp = pred_lakes[[n]]
+    # lm_m = rowMeans(lm_tmp)
+    # lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
 
-    pred_lakes[[n]] = data.frame(time = fut_precip$time, 
-              level = lm_m, se = lm_se )
+    # pred_lakes[[n]] = data.frame(time = fut_precip$time, 
+    #           level = lm_m, se = lm_se )
 
   }
 

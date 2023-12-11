@@ -36,6 +36,7 @@ lake_data = vector("list", n_lakes) #GAM formatted
 lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 
 #Forecasts:
+pred_lakes = vector("list", n_lakes) #LSTM formatted
 lake_models_forecast = vector("list", n_lakes) #LSTM formatted
 
 #Max lags in rain and lake-level data
