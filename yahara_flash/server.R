@@ -93,22 +93,42 @@ server <- function(input, output) {
   ##############################################################
   #PART 2: Forecasting with GAMs
   ##############################################################
-  withProgress(message = 'Forecasting GAMMs', value = 0, {
+  withProgress(message = 'Getting GAMM forecast', value = 0, {
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
-  incProgress(1/2, detail="Update models")
-  updateModel(lake_data,model_form)
+  # incProgress(1/2, detail="Update models")
+  # updateModel(lake_data,model_form)
   
   #Predict the future lake-level response from the saved GAMs
-  incProgress(2/2, detail="Get forecast")
+  #incProgress(2/2, detail="Getting GAMM forecast")
+  for(n in 1:n_lakes){
+
+    #This is the github URL for the data. 
+    giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/gam_",n,"_forecast.csv",
+        sep ="")
+    pred_lakes[[n]] = tail(read.csv(curl(giturl)),lagsp )  
+    print(lagsp)
+    print(dim(pred_lakes[[n]]))
+    #Because the forecasts are generated as a kind of posterior 
+    #draw, get the average and the SE.  
+    lm_tmp = pred_lakes[[n]]
+    lm_m = rowMeans(lm_tmp)
+    lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
+
+    pred_lakes[[n]] = data.frame(time = fut_precip$time, 
+              level = lm_m, se = lm_se )
+
+  }
+
   pred_lakes = predictFlashGAM(lake_data, fut_precip)
+  
   })
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
   #Check to see if the RNN  exists, and whether it has already 
   #been updated and predictions made:
-  withProgress(message = 'Getting forecast', value = 0, {
+  withProgress(message = 'Getting RNN forecast', value = 0, {
  
   #updateModelLSTM(lake_data_lstm)
  

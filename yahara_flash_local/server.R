@@ -101,7 +101,7 @@ server <- function(input, output) {
   
   #Predict the future lake-level response from the saved GAMs
   incProgress(2/2, detail="Get forecast")
-  pred_lakes = predictFlashGAM(lake_data, fut_precip)
+  pred_lakes = updateGAM_pred(lake_data, fut_precip)
   })
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
