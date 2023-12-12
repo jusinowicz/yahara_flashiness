@@ -417,7 +417,6 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
 
     save(file = "gams_forecast.var", lake_models_forecast )
     
-
 }
 
 ##############################################################

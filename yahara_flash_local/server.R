@@ -103,7 +103,7 @@ server <- function(input, output) {
   incProgress(2/2, detail="Get forecast")
   updateGAM_pred(lake_data, fut_precip)
 
-    for(n in 1:n_lakes){
+  for(n in 1:n_lakes){
 
     #This is the github URL for the data. 
     giturl = paste("gam_",n,"_forecast.csv", sep="")
