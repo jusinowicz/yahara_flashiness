@@ -161,12 +161,12 @@ server <- function(input, output) {
   #Max lake level
   mpm = max(pred_lakes[[1]]$level)
   col_use  = "aqua"
-  #Check against the flood levels: 
-  if( mpm < thresh_10[1] ) { col_use = flash_col[1]}
-  if( mpm >= thresh_10[1] && mr < thresh_100[1] ){ 
-    col_use = flash_col[2]}
-  if( mpm >= thresh_100[1] ){ col_use = flash_col[3]}
 
+  #Check against the flood levels: 
+  if( mpm < thresh_10[1] ) { col_use = flash_col[1] }
+  if( mpm >= thresh_10[1] && mr < thresh_100[1] ) { 
+    col_use = flash_col[2] }
+  if( mpm >= thresh_100[1] ){ col_use = flash_col[3] }
 
    #The maximum rainfall in the upcoming days 
     output$max_rain = renderInfoBox({
@@ -191,18 +191,27 @@ server <- function(input, output) {
       )
     })  
  
-    #The confidence interval 
+    #Get a range of predictions to show uncertainty
     output$pred_con_men = renderInfoBox({
-      #Get the max from the time-series
-      mpm = max(pred_lakes[[1]]$level)
-      #Get its se
-      se_men  = pred_lakes[[1]]$se[which(pred_lakes[[1]]$level == mpm)]
-      #95% CIs 
-      pcmen = 1.96*se_men
-      
+      #Get the max from both time-series
+      mpm1 = max(pred_lakes[[1]]$level)
+      mpm2 = max(lake_models_forecast[[1]]$level)
+      mpm = mean(mpm1,mpm2)
+      #Get the ses for the range
+      se_men1  = pred_lakes[[1]]$se[which(pred_lakes[[1]]$level == mpm1)]
+      se_men2  = lake_models_forecast[[1]]$se[
+                    which(lake_models_forecast[[1]]$level == mpm2)]
+
+      # #95% CIs 
+      # pcmen = 1.96*se_men
+      pcmen_low = min(c(mpm1 - se_men1, mpm2 - se_men2) )
+      pcmen_high = max(c(mpm1 + se_men1, mpm2 + se_men2) )
+
       infoBox(
-        "95% CI",
-        value = formatC(pcmen, digits = 1, format = "f"),
+        "Prediction Range (ft)",
+        value = paste( formatC(pcmen_low, digits = 1, format = "f"), 
+                        " to ", formatC(pcmen_high, digits = 1, format = "f"),
+                        sep = "") ,
         icon = icon("chart-line"),
         color = col_use #if (mr >= year10) "yellow" else "aqua"
       )
@@ -313,18 +322,27 @@ if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
  
     #The confidence interval 
     output$pred_con_mon = renderInfoBox({
-      #Get the max from the time-series
-      mpm = max(pred_lakes[[2]]$level)
-      #Get its se
-      se_mon  = pred_lakes[[2]]$se[which(pred_lakes[[2]]$level == mpm)]
-      #95% CIs 
-      pcmon = 1.96*se_mon
+      #Get the max from both time-series
+      mpm1 = max(pred_lakes[[2]]$level)
+      mpm2 = max(lake_models_forecast[[2]]$level)
+      mpm = mean(mpm1,mpm2)
+      #Get the ses for the range
+      se_mon1  = pred_lakes[[2]]$se[which(pred_lakes[[2]]$level == mpm1)]
+      se_mon2  = lake_models_forecast[[2]]$se[
+                    which(lake_models_forecast[[2]]$level == mpm2)]
+
+      # #95% CIs 
+      # pcmen = 1.96*se_men
+      pcmon_low = min(c(mpm1 - se_mon1, mpm2 - se_mon2) )
+      pcmon_high = max(c(mpm1 + se_mon1, mpm2 + se_mon2) )
       
-      infoBox(
-        "95% CI",
-        value = formatC(pcmon, digits = 1, format = "f"),
+ infoBox(
+        "Prediction Range (ft)",
+        value = paste( formatC(pcmon_low, digits = 1, format = "f"), 
+                        " to ", formatC(pcmon_high, digits = 1, format = "f"),
+                        sep = "") ,
         icon = icon("chart-line"),
-        color = col_use2 #if (mr >= year10) "yellow" else "aqua"
+        color = col_use #if (mr >= year10) "yellow" else "aqua"
       )
     })  
 

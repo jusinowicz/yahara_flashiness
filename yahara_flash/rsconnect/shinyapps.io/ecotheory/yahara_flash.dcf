@@ -5,6 +5,6 @@ account: ecotheory
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 10546008
-bundleId: 7980929
+bundleId: 8039090
 url: https://ecotheory.shinyapps.io/yahara_flash/
 version: 1
