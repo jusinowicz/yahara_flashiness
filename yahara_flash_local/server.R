@@ -101,7 +101,18 @@ server <- function(input, output) {
   
   #Predict the future lake-level response from the saved GAMs
   incProgress(2/2, detail="Get forecast")
-  pred_lakes = updateGAM_pred(lake_data, fut_precip)
+  updateGAM_pred(lake_data, fut_precip)
+
+    for(n in 1:n_lakes){
+
+    #This is the github URL for the data. 
+    giturl = paste("gam_",n,"_forecast.csv", sep="")
+    pred_lakes[[n]] = tail(read.csv((giturl)),lagsp )
+    pred_lakes[[n]]$time = as.Date(ymd(pred_lakes[[n]]$time)) 
+    # print(lagsp)
+    print((pred_lakes[[n]]))
+  
+  }
   })
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 

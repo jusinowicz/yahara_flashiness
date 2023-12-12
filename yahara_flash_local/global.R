@@ -2,6 +2,7 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse)
 library(lubridate)
+library(curl)
 #Data processing
 library(nasapower) #API for NASA data, for precipitation
 library(openmeteo)
@@ -36,6 +37,7 @@ lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 
 #Forecasts:
 lake_models_forecast = vector("list", n_lakes) #LSTM formatted
+pred_lakes = vector("list", n_lakes)
 
 #Max lags in rain and lake-level data
 lags = 10

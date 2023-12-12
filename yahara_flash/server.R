@@ -109,18 +109,12 @@ server <- function(input, output) {
     pred_lakes[[n]] = tail(read.csv(curl(giturl)),lagsp )  
     # print(lagsp)
     print((pred_lakes[[n]]))
-    # #Because the forecasts are generated as a kind of posterior 
-    # #draw, get the average and the SE.  
-    # lm_tmp = pred_lakes[[n]]
-    # lm_m = rowMeans(lm_tmp)
-    # lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
+    pred_lakes[[n]]$time = as.Date(ymd(pred_lakes[[n]]$time)) 
 
-    # pred_lakes[[n]] = data.frame(time = fut_precip$time, 
-    #           level = lm_m, se = lm_se )
 
   }
 
-  pred_lakes = predictFlashGAM(lake_data, fut_precip)
+  #pred_lakes = predictFlashGAM(lake_data, fut_precip)
   
   })
   ##############################################################

@@ -396,13 +396,14 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
 	tbl_file = paste("gam_",n,"_forecast.csv", sep="")
 	if(file.exists(tbl_file)){
 		tbl_tmp = read.csv(tbl_file)
+		tbl_tmp$time = as.Date(ymd(tbl_tmp$time)) 
 		tbl_row = dim(tbl_tmp)[1]
 		tbl_col = dim(tbl_tmp)[2]
 		#Add a new row
-		tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
+		tbl_tmp = rbind(tbl_tmp, tbl_tmp[1,])
 		#Overwrite the existing data in the window 
 		#with the new predictions
-		tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = pred_lakes[[n]]
+		tbl_tmp[( tbl_row-(n_days-2) ):(tbl_row+1),] = pred_lakes[[n]]
 		write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
 	
 	}else {
@@ -415,6 +416,7 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
     }
 
     save(file = "gams_forecast.var", lake_models_forecast )
+    
 
 }
 
