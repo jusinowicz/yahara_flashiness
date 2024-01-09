@@ -36,6 +36,9 @@ library(recipes)
 #	install.packages("keras")
 #	library(keras)
 #	install_keras()
+#For graphviz and pyplot:
+#reticulate::conda_install(packages = "graphviz")
+#reticulate::py_install("pydot", pip = TRUE)
 ##############################################################
 #Key user-defined variables
 ##############################################################
@@ -149,6 +152,8 @@ lake_data2 = lake_data
 ##############################################################
 
 #Store fitted models
+lake_models_dnn = vector("list", n_lakes)
+lake_models_gru = vector("list", n_lakes)
 lake_models_lstm = vector("list", n_lakes)
 
 #Performance and prediction 
@@ -165,25 +170,67 @@ lake_data3D = vector("list", n_lakes)
 
 
 #Model definition: 
-#This function is for tensorflow to create the LSTM. This is 
+#This function is for tensorflow to create NNs. Comparing three
+#different types here: DNN (baselin), GRU, LSTM. This is 
 #analogous to the "model form"   
 
-	build_and_compile_model = function() {
+#DNN
+	build_and_compile_dnn = function() {
+	  model = keras_model_sequential() %>%
+	    layer_dense(64, activation = 'relu') %>%
+	    layer_dense(64, activation = 'relu') %>%
+	    layer_dense(1)
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam()
+	  )
+		  model
+	}
+
+	#GRU
+	build_and_compile_gru = function() {
+		model = keras_model_sequential() %>% 
+  		layer_gru(units = 64, activation = "relu",
+            dropout = 0.1, 
+            recurrent_dropout = 0.5,
+            return_sequences = TRUE,
+            #stateful = TRUE,
+            input_shape = list(NULL, dim(ld_tmp)[[-1]])) %>% 
+ 		 	layer_gru(units = 64, 
+            dropout = 0.1,
+            recurrent_dropout = 0.5,
+           	return_sequences = TRUE,
+            #stateful = TRUE 
+          ) %>% 
+  		layer_dense(units = 1)
+
+		model %>% compile(
+		  optimizer = optimizer_rmsprop(),
+		  loss = 'mean_absolute_error'
+		)
+
+}
+
+
+	build_and_compile_lstm = function() {
 		model = keras_model_sequential() %>%
-		bidirectional(
-		layer_lstm(units = 64, # size of the layer
-			activation = 'relu',
-			# batch size, timesteps, features
-    	batch_input_shape = c(1, lags+1, 2), 
-			return_sequences = TRUE,
-			stateful = TRUE) ) %>%
-		# fraction of the units to drop for the linear transformation of the inputs
-		layer_dropout(rate = 0.65) %>%
-		layer_lstm(units =64,
-             return_sequences = TRUE,
-             stateful = TRUE) %>%
-		layer_dropout(rate = 0.65) %>%
-		time_distributed(layer_dense(units = 1))
+			layer_lstm(
+					units = 64, 
+					dropout=0.1,
+					activation="relu", 
+					recurrent_dropout=0.5,
+					return_sequences = TRUE,
+					#stateful = TRUE,
+					input_shape = list(NULL, dim(ld_tmp)[[-1]])) %>%
+	    layer_lstm(
+	    		units = 64,  
+					dropout=0.1, 
+					recurrent_dropout=0.5,
+					return_sequences = TRUE,
+					#stateful = TRUE
+				) %>%
+			layer_dense(units = 1)
 
 	  model %>% compile(
 	    loss = 'mean_absolute_error',
@@ -194,82 +241,198 @@ lake_data3D = vector("list", n_lakes)
 	}
 
 
+	# 	model = keras_model_sequential() %>%
+	# 	bidirectional(
+	# 	layer_lstm(units = 64, # size of the layer
+	# 		activation = 'relu',
+	# 		# batch size, timesteps, features
+  #   	batch_input_shape = c(1, lags+1, 2), 
+	# 		return_sequences = TRUE,
+	# 		stateful = TRUE) ) %>%
+	# 	# fraction of the units to drop for the linear transformation of the inputs
+	# 	layer_dropout(rate = 0.65) %>%
+	# 	layer_lstm(units =64,
+  #            return_sequences = TRUE,
+  #            stateful = TRUE) %>%
+	# 	layer_dropout(rate = 0.65) %>%
+	# 	time_distributed(layer_dense(units = 1))
+
+	#   model %>% compile(
+	#     loss = 'mean_absolute_error',
+	#     optimizer = optimizer_adam()
+	#   )
+
+	#   model
+	# }
+
+
 for(n in 1:n_lakes){ 
+	
 	##########################################################################
-	#Processing section to convert each lake_data[[n]] to correct 
-	#format for LSTM. This includes an X and Y data set. 
+	#Create the save points for models
 	##########################################################################
-	checkpoint_path = paste("./LSTM/", "lakeLSTM",n,".tf", sep="")
-	checkpoint_dir = fs::path_dir(checkpoint_path)
+	dnn_checkpoint_path = paste("./DNN/", "lakeDNN",n,".tf", sep="")
+	dnn_checkpoint_dir = fs::path_dir(dnn_checkpoint_path)
+
+	dnn_log = "logs/run_dnn"
+
+	gru_checkpoint_path = paste("./GRU/", "lakeGRU",n,".tf", sep="")
+	gru_checkpoint_dir = fs::path_dir(gru_checkpoint_path)
+
+	gru_log = "logs/run_gru"
+
+	lstm_checkpoint_path = paste("./LSTM/", "lakeLSTM",n,".tf", sep="")
+	lstm_checkpoint_dir = fs::path_dir(lstm_checkpoint_path)
+
+	lstm_log = "logs/run_lstm"
 
 	# Create a callback that saves the model's weights
-	cp_callback = callback_model_checkpoint(
-	  filepath = checkpoint_path,
+	dnn_callback = callback_model_checkpoint(
+	  filepath = dnn_checkpoint_path,
 	  #save_weights_only = TRUE,
 	  verbose = 1
 	)
 
-	#Use a subset initially:
-	s1 = 1
-	s2 = 1000
-	lake_data[[n]] = lake_data2[[n]][s1:s2,]
+	gru_callback = callback_model_checkpoint(
+	  filepath = gru_checkpoint_path,
+	  #save_weights_only = TRUE,
+	  verbose = 1
+	)
+
+	lstm_callback = callback_model_checkpoint(
+	  filepath = lstm_checkpoint_path,
+	  #save_weights_only = TRUE,
+	  verbose = 1
+	)
+
+	##########################################################################
+	#Data processing section to make data sets: truncate, normalize, split 
+	##########################################################################
 
 	#Chop off time 
 	ld_tmp = lake_data[[n]][,-1]
 
 	#Chop off the first lagged rows with NAs:
 	ld_tmp = ld_tmp[-(1:(lags+1)), ]
-
 	ntime_full = dim(ld_tmp)[1]
 
-	#Separate last two rows: one for predicion data, 
-	#the second for comparison: 
-	lake_test = ld_tmp [(ntime_full-1), ]
-	lake_compare = ld_tmp [(ntime_full), ]
-	ld_tmp = ld_tmp[1:(ntime_full-2), ]
+	#Need to convert ld_tmp to a matrix
+	ld_tmp = as.matrix(ld_tmp)
 
-	#Split the remaining data into X and Y for training.
-	#E.g. if dim(ld_tmp)[1] = 100, then X will be 1:(100-lags)
-	#and Y will be lags:100. 
-	ntime_tmp = dim(ld_tmp)[1]
-	ld_tmp_x = ld_tmp[1:(ntime_tmp-lags),]
-	ld_tmp_y = ld_tmp[(lags+1):(ntime_tmp),]
-	
-	#Split the features in both X and Y, as well as the test 
-	#prediction matrix, into arrays as 3D objects
-	lake_data3D_x = array(data = as.numeric(unlist(ld_tmp_x)), 
-		dim = c(nrow(ld_tmp_x),
-			ncol(ld_tmp_x)/2,2) )
+	#Set variables for training, validation, and testing data sets
+	#Range of training, validation, and test sets:
+	min_train = 1
+	max_train = floor(ntime_full*2/3)
+	min_val = max_train+1
+	max_val = min_val + floor(0.5*(ntime_full-max_train))
+	min_test = max_val+1
+	max_test = NA
 
-	lake_data3D_y = array(data = as.numeric(unlist(ld_tmp_x)), 
-		dim = c(nrow(ld_tmp_y),
-			ncol(ld_tmp_y)/2,2) )
+	#How long of a series to use at a time
+	lookback = 30
+	#Use every time point
+	step = 1
+	#Number of time steps into the future to predict
+	delay = 7
+	#Samples
+	batch_size = 100
+	predser = 1 #Index of label
 
-	lake_data3D_test = array(data = as.numeric(unlist(lake_test)), 
-		dim = c(nrow(lake_test),
-			ncol(lake_test)/2,2) )
+	#Use generator function to instantiate three generators: 
+	#one for training, one for validation, and one for testing. 
+	#Each will look at different temporal segments of the original 
+	#data: the training generator looks at the first 2/3 timesteps, 
+	#the validation generator looks at the following 1/3, and the test 
+	#generator looks at the last time step.
+
+	#Training set 
+	train_gen = generator(
+	  ld_tmp,
+	  lookback = lookback,
+	  delay = delay,
+	  min_index = min_train,
+	  max_index = max_train,
+	  #shuffle = TRUE,
+	  step = step,
+	  batch_size = batch_size,
+	  predseries = predser  
+	)
+
+	#Validation set 
+	val_gen = generator(
+	  ld_tmp,
+	  lookback = lookback,
+	  delay = delay,
+	  min_index = min_val,
+	  max_index = max_val,
+	  step = step,
+	  batch_size = batch_size,
+	  predseries = predser  
+	)
+
+	#Test set looks at remaining
+	test_gen = generator(
+	  ld_tmp,
+	  lookback = lookback,
+	  delay = delay,
+	  min_index = min_test,
+	  max_index = NULL,
+	  step = step,
+	  batch_size = batch_size,
+	  predseries = predser    
+	)
+
+	val_steps = floor( (max_val - min_val - lookback) / batch_size )
+	test_steps = floor( (nrow(ld_tmp) - max_val - lookback) / batch_size)
 
 	##########################################################################
 	#Model fitting section.
 	##########################################################################
 
-	#Build the model
-	lake_models_lstm[[n]]  = build_and_compile_model()
-	#summary(dnn_model)
+	#Build the models
+	lake_models_dnn[[n]]  = build_and_compile_dnn()
+	lake_models_lstm[[n]]  = build_and_compile_lstm()
+	lake_models_gru[[n]]  = build_and_compile_gru()
 
 	#Fit the model to training data
-	lake_models_lstm[[n]] %>% fit(
-		x = lake_data3D_x,
-		y = lake_data3D_y,
-		batch_size = 1,
-		epochs = 20,
-		#verbose = 0,
-		shuffle = FALSE, #Important for LSTM!
-		callbacks = list(cp_callback) # Pass callback to training
+	#tensorboard(dnn_log )
+
+	lake_models_dnn[[n]] %>% fit(
+		train_gen,
+		steps_per_epoch = test_steps,
+  	epochs = 20,
+  	validation_data = val_gen,
+ 		validation_steps = val_steps,
+		callbacks = list(dnn_callback) # Pass callback to training
 	)
 
+	#Fit the model to training data
+	#tensorboard(gru_log )
+
+	lake_models_gru[[n]] %>% fit(
+		train_gen,
+		steps_per_epoch = test_steps,
+  	epochs = 20,
+  	validation_data = val_gen,
+ 		validation_steps = val_steps,
+		callbacks = list(gru_callback,callback_tensorboard(gru_log )) # Pass callback to training
+	)
+
+	#Fit the model to training data
+	#tensorboard(lstm_log )
+	lake_models_lstm[[n]] %>% fit(
+		train_gen,
+		steps_per_epoch = test_steps,
+  	epochs = 20,
+  	validation_data = val_gen,
+ 		validation_steps = val_steps,
+		callbacks = list(lstm_callback, 
+				callback_tensorboard(lstm_log )) # Pass callback to training
+	)
+
+
 	#look at the forecast
-	lake_forecast = lake_models_lstm[[n]]  %>%
+	lake_forecast_dnn = lake_models_dnn[[n]]  %>%
 	  predict(lake_data3D_test, batch_size = 1) %>%
 	  .[, , 1]
 	 

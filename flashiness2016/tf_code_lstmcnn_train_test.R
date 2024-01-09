@@ -91,6 +91,7 @@ n_lakes = 2
   lake_dates = vector("list", n_lakes)
   scale_ll = vector("list", n_lakes)
 
+
   #Load the historic data sets
   lake_table[[1]] = read.csv(file = "./../data/men_hist.csv")
   lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
@@ -134,7 +135,7 @@ n_lakes = 2
 
 	#For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
-     scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm=T), sqrt(var(lake.tmp$level,na.rm=T)) )
+    scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm=T), sqrt(var(lake.tmp$level,na.rm=T)) )
     scale_rn = c ( mean(rn.tmp$rn,na.rm=T), sqrt(var(rn.tmp$rn,na.rm=T)) )
     lake_data[[n]] = make.flashiness.object(data.frame(level= 
       (lake.tmp$level - scale_ll[[n]][1])/scale_ll[[n]][2] ),
@@ -170,16 +171,20 @@ lake_data3D = vector("list", n_lakes)
 
 	build_and_compile_model = function() {
 		model = keras_model_sequential() %>%
-		bidirectional(
-		layer_lstm(units = 64, # size of the layer
+		# layer_conv_1d(filters=32, kernel_size=3, activation="relu",
+    #              input_shape = list(NULL, dim(data)[[-1]])) %>%
+    # layer_max_pooling_1d(pool_size=3) %>%
+    # layer_conv_1d(filters = 32, kernel_size = 5, activation = "relu") %>%
+		# bidirectional(
+		layer_conv_lstm_1d( filters=64, kernel_size=3, units = 64, # size of the layer
 			activation = 'relu',
 			# batch size, timesteps, features
     	batch_input_shape = c(1, lags+1, 2), 
 			return_sequences = TRUE,
-			stateful = TRUE) ) %>%
+			stateful = TRUE)  %>%
 		# fraction of the units to drop for the linear transformation of the inputs
 		layer_dropout(rate = 0.65) %>%
-		layer_lstm(units =64,
+		layer_conv_lstm_1d(filters=64, kernel_size=3,units =64,
              return_sequences = TRUE,
              stateful = TRUE) %>%
 		layer_dropout(rate = 0.65) %>%
@@ -199,7 +204,7 @@ for(n in 1:n_lakes){
 	#Processing section to convert each lake_data[[n]] to correct 
 	#format for LSTM. This includes an X and Y data set. 
 	##########################################################################
-	checkpoint_path = paste("./LSTM/", "lakeLSTM",n,".tf", sep="")
+	checkpoint_path = paste("./CNNLSTM/", "lakeLSTM",n,".tf", sep="")
 	checkpoint_dir = fs::path_dir(checkpoint_path)
 
 	# Create a callback that saves the model's weights

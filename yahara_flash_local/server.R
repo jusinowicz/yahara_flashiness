@@ -58,9 +58,9 @@ server <- function(input, output) {
     #Do some processing to remove ice-on days (approximately). This 
     #function automatically removes winter days and converts data 
     #table to a timeseries (ts) object 
-    lake.tmp = remove.days(lake_data[[n]][,c(1,2)], year(real_start[[n]] ) )
+    lake.tmp = remove.days(lake_data[[n]][,c(1,2)], w.yes=F, year(real_start[[n]] ) )
     #colnames(lake.tmp) = "level"
-    rn.tmp = remove.days(lake_data[[n]][,c(1,3)], year(real_start[[n]] ) )
+    rn.tmp = remove.days(lake_data[[n]][,c(1,3)], w.yes=F, year(real_start[[n]] ) )
     #colnames(rn.tmp) = "rn"
     #Check for and remove NAs: 
     rwNA = rowSums(is.na(cbind(lake.tmp,rn.tmp))) 
@@ -77,6 +77,12 @@ server <- function(input, output) {
     #rain input. 
     lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level), 
       data.frame(rn=rn.tmp$rn), lags)
+
+    years.tmp = data.frame( Years=format(lake_dates[[n]], "%Y") )
+    months.tmp = data.frame(Months = format(lake_dates[[n]], "%m") )
+
+    #Include the years and the months as columns
+    lake_data[[n]] = rbind( years.tmp, months.tmp, lake_data[[n]] )
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
