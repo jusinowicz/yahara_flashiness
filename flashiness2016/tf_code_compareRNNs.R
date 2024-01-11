@@ -155,19 +155,11 @@ lake_data2 = lake_data
 lake_models_dnn = vector("list", n_lakes)
 lake_models_gru = vector("list", n_lakes)
 lake_models_lstm = vector("list", n_lakes)
+lake_models_bilstm = vector("list", n_lakes)
 
-#Performance and prediction 
-pred_train = vector("list", n_lakes)
-pred_test = vector("list", n_lakes)
-
-lake_models_forecast = vector("list", n_lakes)
+#Forecasts
+lake_forecast_dnn = vector("list", n_lakes)
 lake_models_compare = vector("list", n_lakes)
-
-#Need to make the lake data a 3D array and to separe out the 
-#lake level and rain lags into separate matrixes (along the 
-#3rd array dimension):
-lake_data3D = vector("list", n_lakes)
-
 
 #Model definition: 
 #This function is for tensorflow to create NNs. Comparing three
@@ -196,14 +188,15 @@ lake_data3D = vector("list", n_lakes)
             recurrent_dropout = 0.5,
             return_sequences = TRUE,
             #stateful = TRUE,
-            input_shape = list(NULL, dim(ld_tmp)[[-1]])) %>% 
+						input_shape = c(lookback, dim(ld_tmp)[[-1]] ) )%>%
+						#list(NULL, dim(ld_tmp)[[-1]])) %>%
  		 	layer_gru(units = 64, 
             dropout = 0.1,
             recurrent_dropout = 0.5,
            	return_sequences = TRUE,
             #stateful = TRUE 
           ) %>% 
-  		layer_dense(units = 1)
+  		time_distributed(layer_dense(units = 1) ) 
 
 		model %>% compile(
 		  optimizer = optimizer_rmsprop(),
@@ -212,7 +205,7 @@ lake_data3D = vector("list", n_lakes)
 
 }
 
-
+#LSTM
 	build_and_compile_lstm = function() {
 		model = keras_model_sequential() %>%
 			layer_lstm(
@@ -222,7 +215,8 @@ lake_data3D = vector("list", n_lakes)
 					recurrent_dropout=0.5,
 					return_sequences = TRUE,
 					#stateful = TRUE,
-					input_shape = list(NULL, dim(ld_tmp)[[-1]])) %>%
+					input_shape = c(lookback, dim(ld_tmp)[[-1]] ) )%>%
+					#list(NULL, dim(ld_tmp)[[-1]])) %>%
 	    layer_lstm(
 	    		units = 64,  
 					dropout=0.1, 
@@ -230,7 +224,7 @@ lake_data3D = vector("list", n_lakes)
 					return_sequences = TRUE,
 					#stateful = TRUE
 				) %>%
-			layer_dense(units = 1)
+			time_distributed(layer_dense(units = 1) )
 
 	  model %>% compile(
 	    loss = 'mean_absolute_error',
@@ -240,31 +234,36 @@ lake_data3D = vector("list", n_lakes)
 	  model
 	}
 
+#bi-directional LSTM
+	build_and_compile_bilstm = function() {
+		model = keras_model_sequential() %>%
+			bidirectional( 
+				layer_lstm(
+					units = 64, 
+					dropout=0.1,
+					activation="relu", 
+					recurrent_dropout=0.5,
+					return_sequences = TRUE,
+					#stateful = TRUE,
+					input_shape = list(NULL, dim(ld_tmp)[[-1]])
+				)
+			) %>%
+	    layer_lstm(
+	    		units = 64,  
+					dropout=0.1, 
+					recurrent_dropout=0.5,
+					return_sequences = TRUE,
+					#stateful = TRUE
+				) %>%
+			time_distributed(layer_dense(units = 1) )
 
-	# 	model = keras_model_sequential() %>%
-	# 	bidirectional(
-	# 	layer_lstm(units = 64, # size of the layer
-	# 		activation = 'relu',
-	# 		# batch size, timesteps, features
-  #   	batch_input_shape = c(1, lags+1, 2), 
-	# 		return_sequences = TRUE,
-	# 		stateful = TRUE) ) %>%
-	# 	# fraction of the units to drop for the linear transformation of the inputs
-	# 	layer_dropout(rate = 0.65) %>%
-	# 	layer_lstm(units =64,
-  #            return_sequences = TRUE,
-  #            stateful = TRUE) %>%
-	# 	layer_dropout(rate = 0.65) %>%
-	# 	time_distributed(layer_dense(units = 1))
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam()
+	  )
 
-	#   model %>% compile(
-	#     loss = 'mean_absolute_error',
-	#     optimizer = optimizer_adam()
-	#   )
-
-	#   model
-	# }
-
+	  model
+	}
 
 for(n in 1:n_lakes){ 
 	
@@ -286,6 +285,11 @@ for(n in 1:n_lakes){
 
 	lstm_log = "logs/run_lstm"
 
+	bilstm_checkpoint_path = paste("./BILSTM/", "lakeBILSTM",n,".tf", sep="")
+	bilstm_checkpoint_dir = fs::path_dir(bilstm_checkpoint_path)
+
+	bilstm_log = "logs/run_bilstm"
+
 	# Create a callback that saves the model's weights
 	dnn_callback = callback_model_checkpoint(
 	  filepath = dnn_checkpoint_path,
@@ -305,9 +309,26 @@ for(n in 1:n_lakes){
 	  verbose = 1
 	)
 
+	bilstm_callback = callback_model_checkpoint(
+	  filepath = bilstm_checkpoint_path,
+	  #save_weights_only = TRUE,
+	  verbose = 1
+	)
+
 	##########################################################################
 	#Data processing section to make data sets: truncate, normalize, split 
 	##########################################################################
+	#Note: balance lookback, delay, and batch size to maximize training 
+	#efficiency! 
+	#How long of a series to use at a time
+	lookback = 10
+	#Use every time point
+	step = 1
+	#Number of time steps into the future to predict
+	delay = 1
+	#Samples
+	batch_size = 20
+	predser = 1 #Index of label
 
 	#Chop off time 
 	ld_tmp = lake_data[[n]][,-1]
@@ -328,15 +349,9 @@ for(n in 1:n_lakes){
 	min_test = max_val+1
 	max_test = NA
 
-	#How long of a series to use at a time
-	lookback = 30
-	#Use every time point
-	step = 1
-	#Number of time steps into the future to predict
-	delay = 7
-	#Samples
-	batch_size = 100
-	predser = 1 #Index of label
+	#Validation and test steps 
+	val_steps = floor( (max_val - min_val - lookback) / batch_size )
+	test_steps = floor( (nrow(ld_tmp) - max_val - lookback) / batch_size)
 
 	#Use generator function to instantiate three generators: 
 	#one for training, one for validation, and one for testing. 
@@ -382,8 +397,6 @@ for(n in 1:n_lakes){
 	  predseries = predser    
 	)
 
-	val_steps = floor( (max_val - min_val - lookback) / batch_size )
-	test_steps = floor( (nrow(ld_tmp) - max_val - lookback) / batch_size)
 
 	##########################################################################
 	#Model fitting section.
@@ -393,13 +406,14 @@ for(n in 1:n_lakes){
 	lake_models_dnn[[n]]  = build_and_compile_dnn()
 	lake_models_lstm[[n]]  = build_and_compile_lstm()
 	lake_models_gru[[n]]  = build_and_compile_gru()
+	lake_models_bilstm[[n]]  = build_and_compile_gru()
 
 	#Fit the model to training data
 	#tensorboard(dnn_log )
 
 	lake_models_dnn[[n]] %>% fit(
 		train_gen,
-		steps_per_epoch = test_steps,
+		steps_per_epoch = 80, #test_steps,
   	epochs = 20,
   	validation_data = val_gen,
  		validation_steps = val_steps,
@@ -411,7 +425,7 @@ for(n in 1:n_lakes){
 
 	lake_models_gru[[n]] %>% fit(
 		train_gen,
-		steps_per_epoch = test_steps,
+		steps_per_epoch = 80, #test_steps,
   	epochs = 20,
   	validation_data = val_gen,
  		validation_steps = val_steps,
@@ -430,13 +444,90 @@ for(n in 1:n_lakes){
 				callback_tensorboard(lstm_log )) # Pass callback to training
 	)
 
+	#Fit the model to training data
+	#tensorboard(bilstm_log )
+	lake_models_bilstm[[n]] %>% fit(
+		train_gen,
+		steps_per_epoch = test_steps,
+  	epochs = 20,
+  	validation_data = val_gen,
+ 		validation_steps = val_steps,
+		callbacks = list(bilstm_callback, 
+				callback_tensorboard(bilstm_log )) # Pass callback to training
+	)
 
-	#look at the forecast
-	lake_forecast_dnn = lake_models_dnn[[n]]  %>%
-	  predict(lake_data3D_test, batch_size = 1) %>%
-	  .[, , 1]
-	 
-	lake_models_forecast[[n]] = lake_forecast*scale_ll[[n]][1]+scale_ll[[n]][2]
+
+
+	test_dat= test_gen()
+	
+yhat <- predict(
+   lake_models_gru[[n]] ,
+   test_dat[[1]],
+   #batch_size = batch_size,
+   verbose = 0,
+   #steps = test_steps)
+ )
+
+	#look at the forecasts. Using predict this way returns a matrix of 
+	#ntime x lookback x 1. So there are n=lookback reps of each time 
+	#point (?)
+	lf_dnn = lake_models_dnn[[n]]  %>%
+	  predict(test_gen, steps=test_steps ) 
+
+	lf_gru = lake_models_gru[[n]]  %>%
+	  predict(test_gen, steps=test_steps )
+
+	lf_lstm = lake_models_gru[[n]]  %>%
+	  predict(test_gen, steps=test_steps )
+
+	lf_bilstm = lake_models_gru[[n]]  %>%
+	  predict(test_gen, steps=test_steps )
+
+
+predictions <- model %>% predict_generator(test_gen, steps = test_steps)
+
+
+# Assuming 'test_data' contains both features/covariates and target values
+actual_values <- test_data[(test_min_index + lookback):(test_max_index + 1), "target_column_name"]
+
+# Now you can compare 'predictions' (obtained using model %>% predict_generator()) with 'actual_values'
+accuracy <- sqrt(mean((predictions - actual_values)^2))  # Root Mean Squared Error
+
+
+	lf_dnn = lake_models_dnn[[n]]  %>%
+	  predict(t1[[1]][,1,],batch_size = 1) 
+
+
+
+	lf_dnn = lake_models_dnn[[n]]  %>%
+	  predict(tst_dat[[1]],batch_size = batch_size ,
+	  				 steps=test_steps )
+
+	lf_gru = lake_models_gru[[n]]  %>%
+	  predict(test_gen, steps=test_steps )
+
+	lake_compare_gru = ld_tmp[(min_test):( ntime_full),1]
+	
+
+
+	lf_gru = lake_models_gru[[n]]  %>%
+	  predict(test_dat[[1]],
+	  				 steps=test_steps )
+
+	lf_gru = lake_models_gru[[n]]  %>%
+	  predict(t1[[1]],batch_size = 1)
+
+	lf_lstm = lake_models_lstm[[n]]  %>%
+	  predict(t1[[1]],batch_size = 1)  
+
+	lf_bilstm = lake_models_bilstm[[n]]  %>%
+	  predict(t1[[1]],batch_size = 1) 
+
+	lake_forecast_dnn[[n]] = 	lf_dnn*scale_ll[[n]][2]+scale_ll[[n]][1]
+	lake_forecast_gru[[n]] = 	lf_gru*scale_ll[[n]][2]+scale_ll[[n]][1]
+	lake_forecast_lstm[[n]] = 	lf_lstm*scale_ll[[n]][2]+scale_ll[[n]][1]
+	lake_forecast_bilstm[[n]] = 	lf_bilstm*scale_ll[[n]][2]+scale_ll[[n]][1]
+
 	lake_models_compare[[n]] = lake_compare 
 
 }

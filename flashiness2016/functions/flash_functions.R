@@ -443,7 +443,7 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
 ##############################################################
 
 generator <- function(data, lookback, delay, min_index, max_index,
-                      shuffle = FALSE, batch_size = 20, step = 1, 
+                      shuffle = FALSE, batch_size, step, 
                       predseries) {
   
   if (is.null(max_index)) max_index <- nrow(data) - delay - 1
