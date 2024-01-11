@@ -156,6 +156,8 @@ lake_models_dnn = vector("list", n_lakes)
 lake_models_gru = vector("list", n_lakes)
 lake_models_lstm = vector("list", n_lakes)
 lake_models_bilstm = vector("list", n_lakes)
+lake_models_cnn = vector("list", n_lakes)
+lake_models_cnnlstm = vector("list", n_lakes)
 
 #Forecasts
 lake_forecast_dnn = vector("list", n_lakes)
@@ -263,6 +265,62 @@ lake_models_compare = vector("list", n_lakes)
 	  model
 	}
 
+	#Convolutional NN
+	build_and_compile_cnn= function() {
+		model = keras_model_sequential() %>%
+			layer_conv_1d(
+					filters=64, 
+					kernel_size=5, 
+					activation="relu",
+					input_shape = list(NULL, dim(ld_tmp)[[-1]])
+				) %>%
+			layer_max_pooling_1d(pool_size=3) %>%
+ 			layer_dense(64, activation = 'relu') %>% 
+			layer_dense(units = 1)
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam()
+	  )
+
+	  model
+	}
+
+#CNN plus LSTM
+	build_and_compile_cnnlstm = function() {
+		model = keras_model_sequential() %>%
+			layer_conv_1d(
+					filters=64, 
+					kernel_size=3, 
+					activation="relu",
+					input_shape = list(NULL, dim(ld_tmp)[[-1]])
+				) %>%
+			layer_max_pooling_1d(pool_size=3) %>%
+   		layer_conv_1d(
+					filters=64, 
+					kernel_size=3, 
+					activation="relu",
+				) %>%
+	    layer_lstm(
+	    		units = 64,  
+					dropout=0.1, 
+					recurrent_dropout=0.5,
+					return_sequences = TRUE,
+					#stateful = TRUE
+				) %>%
+			layer_dense(units = 1) 
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam()
+	  )
+
+	  model
+	}
+
+
+
+
 for(n in 1:n_lakes){ 
 	
 	##########################################################################
@@ -287,6 +345,16 @@ for(n in 1:n_lakes){
 	bilstm_checkpoint_dir = fs::path_dir(bilstm_checkpoint_path)
 
 	bilstm_log = "logs/run_bilstm"
+
+	cnn_checkpoint_path = paste("./CNN/", "lakeCNN",n,".tf", sep="")
+	cnn_checkpoint_dir = fs::path_dir(cnn_checkpoint_path)
+
+	cnn_log = "logs/run_cnn"
+
+	cnnlstm_checkpoint_path = paste("./CNNLSTM/", "lakeCNNLSTM",n,".tf", sep="")
+	cnnlstm_checkpoint_dir = fs::path_dir(cnnlstm_checkpoint_path)
+
+	cnnlstm_log = "logs/run_cnnlstm"
 
 	# Create a callback that saves the model's weights
 	dnn_callback = callback_model_checkpoint(
@@ -313,13 +381,27 @@ for(n in 1:n_lakes){
 	  verbose = 1
 	)
 
+
+	cnn_callback = callback_model_checkpoint(
+	  filepath = cnn_checkpoint_path,
+	  #save_weights_only = TRUE,
+	  verbose = 1
+	)
+
+
+	cnnlstm_callback = callback_model_checkpoint(
+	  filepath = cnnlstm_checkpoint_path,
+	  #save_weights_only = TRUE,
+	  verbose = 1
+	)
+
 	##########################################################################
 	#Data processing section to make data sets: truncate, normalize, split 
 	##########################################################################
 	#Note: balance lookback, delay, and batch size to maximize training 
 	#efficiency! 
 	#How long of a series to use at a time
-	lookback = 10
+	lookback = 20
 	#Use every time point
 	step = 1
 	#Number of time steps into the future to predict
@@ -402,9 +484,11 @@ for(n in 1:n_lakes){
 
 	#Build the models
 	lake_models_dnn[[n]]  = build_and_compile_dnn()
-	lake_models_lstm[[n]]  = build_and_compile_lstm()
 	lake_models_gru[[n]]  = build_and_compile_gru()
-	lake_models_bilstm[[n]]  = build_and_compile_gru()
+	lake_models_lstm[[n]]  = build_and_compile_lstm()
+	lake_models_bilstm[[n]]  = build_and_compile_bilstm()
+	lake_models_cnn[[n]]  = build_and_compile_cnn()
+	lake_models_cnnlstm[[n]]  = build_and_compile_cnnlstm()
 
 	#Fit the model to training data
 	#tensorboard(dnn_log )
@@ -454,6 +538,31 @@ for(n in 1:n_lakes){
 				callback_tensorboard(bilstm_log )) # Pass callback to training
 	)
 
+	#Fit the model to training data
+	#tensorboard(bilstm_log )
+	lake_models_cnn[[n]] %>% fit(
+		train_gen,
+		steps_per_epoch = test_steps,
+  	epochs = 20,
+  	validation_data = val_gen,
+ 		validation_steps = val_steps,
+		callbacks = list(cnn_callback, 
+				callback_tensorboard(cnn_log )) # Pass callback to training
+	)
+
+	#Fit the model to training data
+	#tensorboard(bilstm_log )
+	lake_models_cnnlstm[[n]] %>% fit(
+		train_gen,
+		steps_per_epoch = test_steps,
+  	epochs = 20,
+  	validation_data = val_gen,
+ 		validation_steps = val_steps,
+		callbacks = list(cnnlstm_callback, 
+				callback_tensorboard(cnnlstm_log )) # Pass callback to training
+	)
+
+
 	#look at the forecasts and get RMSE for each
 	#Need to restructure test data for the RNNs: 
 	test_data = array( ld_tmp[min_test:ntime_full, ], 
@@ -470,6 +579,12 @@ for(n in 1:n_lakes){
 
 	lf_bilstm = lake_models_bilstm[[n]]  %>%
 	  predict(test_data)
+
+	lf_cnn = lake_models_cnn[[n]]  %>%
+	  predict(test_data)
+
+	lf_cnnlstm = lake_models_bilstm[[n]]  %>%
+	  predict(test_data)
 	  
 	nuse = length(ld_tmp[min_test:ntime_full,1])
 
@@ -478,6 +593,8 @@ for(n in 1:n_lakes){
   acc_gru = sqrt(mean((lf_gru -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
   acc_lstm = sqrt(mean((lf_lstm-ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
   acc_bilstm= sqrt(mean((lf_bilstm -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
+  acc_cnn= sqrt(mean((lf_cnn -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
+  acc_cnnlstm= sqrt(mean((lf_cnnlstm -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
 
   rmse_all = c( acc_dnn, acc_gru, acc_lstm, acc_bilstm)
 
