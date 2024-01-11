@@ -188,15 +188,14 @@ lake_models_compare = vector("list", n_lakes)
             recurrent_dropout = 0.5,
             return_sequences = TRUE,
             #stateful = TRUE,
-						input_shape = c(lookback, dim(ld_tmp)[[-1]] ) )%>%
-						#list(NULL, dim(ld_tmp)[[-1]])) %>%
+						input_shape = list(NULL, dim(ld_tmp)[[-1]])) %>%
  		 	layer_gru(units = 64, 
             dropout = 0.1,
             recurrent_dropout = 0.5,
            	return_sequences = TRUE,
             #stateful = TRUE 
           ) %>% 
-  		time_distributed(layer_dense(units = 1) ) 
+  		(layer_dense(units = 1) ) 
 
 		model %>% compile(
 		  optimizer = optimizer_rmsprop(),
@@ -215,8 +214,7 @@ lake_models_compare = vector("list", n_lakes)
 					recurrent_dropout=0.5,
 					return_sequences = TRUE,
 					#stateful = TRUE,
-					input_shape = c(lookback, dim(ld_tmp)[[-1]] ) )%>%
-					#list(NULL, dim(ld_tmp)[[-1]])) %>%
+					input_shape = list(NULL, dim(ld_tmp)[[-1]])) %>%
 	    layer_lstm(
 	    		units = 64,  
 					dropout=0.1, 
@@ -224,7 +222,7 @@ lake_models_compare = vector("list", n_lakes)
 					return_sequences = TRUE,
 					#stateful = TRUE
 				) %>%
-			time_distributed(layer_dense(units = 1) )
+			(layer_dense(units = 1) )
 
 	  model %>% compile(
 	    loss = 'mean_absolute_error',
@@ -255,7 +253,7 @@ lake_models_compare = vector("list", n_lakes)
 					return_sequences = TRUE,
 					#stateful = TRUE
 				) %>%
-			time_distributed(layer_dense(units = 1) )
+			(layer_dense(units = 1) )
 
 	  model %>% compile(
 	    loss = 'mean_absolute_error',
@@ -347,7 +345,7 @@ for(n in 1:n_lakes){
 	min_val = max_train+1
 	max_val = min_val + floor(0.5*(ntime_full-max_train))
 	min_test = max_val+1
-	max_test = NA
+	max_test = NULL
 
 	#Validation and test steps 
 	val_steps = floor( (max_val - min_val - lookback) / batch_size )
@@ -417,7 +415,7 @@ for(n in 1:n_lakes){
   	epochs = 20,
   	validation_data = val_gen,
  		validation_steps = val_steps,
-		callbacks = list(dnn_callback) # Pass callback to training
+		callbacks = list(dnn_callback,callback_tensorboard(dnn_log )) # Pass callback to training
 	)
 
 	#Fit the model to training data
@@ -456,79 +454,33 @@ for(n in 1:n_lakes){
 				callback_tensorboard(bilstm_log )) # Pass callback to training
 	)
 
-
-
-	test_dat= test_gen()
-	
-yhat <- predict(
-   lake_models_gru[[n]] ,
-   test_dat[[1]],
-   #batch_size = batch_size,
-   verbose = 0,
-   #steps = test_steps)
- )
-
-	#look at the forecasts. Using predict this way returns a matrix of 
-	#ntime x lookback x 1. So there are n=lookback reps of each time 
-	#point (?)
-	lf_dnn = lake_models_dnn[[n]]  %>%
-	  predict(test_gen, steps=test_steps ) 
-
-	lf_gru = lake_models_gru[[n]]  %>%
-	  predict(test_gen, steps=test_steps )
-
-	lf_lstm = lake_models_gru[[n]]  %>%
-	  predict(test_gen, steps=test_steps )
-
-	lf_bilstm = lake_models_gru[[n]]  %>%
-	  predict(test_gen, steps=test_steps )
-
-
-predictions <- model %>% predict_generator(test_gen, steps = test_steps)
-
-
-# Assuming 'test_data' contains both features/covariates and target values
-actual_values <- test_data[(test_min_index + lookback):(test_max_index + 1), "target_column_name"]
-
-# Now you can compare 'predictions' (obtained using model %>% predict_generator()) with 'actual_values'
-accuracy <- sqrt(mean((predictions - actual_values)^2))  # Root Mean Squared Error
-
+	#look at the forecasts and get RMSE for each
+	#Need to restructure test data for the RNNs: 
+	test_data = array( ld_tmp[min_test:ntime_full, ], 
+											dim = c(1, 636,14 ) )
 
 	lf_dnn = lake_models_dnn[[n]]  %>%
-	  predict(t1[[1]][,1,],batch_size = 1) 
+	  predict(test_data[1,,]) 
 
+	lf_gru = lake_models_gru[[n]]  %>%  
+		predict(test_data)
 
-
-	lf_dnn = lake_models_dnn[[n]]  %>%
-	  predict(tst_dat[[1]],batch_size = batch_size ,
-	  				 steps=test_steps )
-
-	lf_gru = lake_models_gru[[n]]  %>%
-	  predict(test_gen, steps=test_steps )
-
-	lake_compare_gru = ld_tmp[(min_test):( ntime_full),1]
-	
-
-
-	lf_gru = lake_models_gru[[n]]  %>%
-	  predict(test_dat[[1]],
-	  				 steps=test_steps )
-
-	lf_gru = lake_models_gru[[n]]  %>%
-	  predict(t1[[1]],batch_size = 1)
-
-	lf_lstm = lake_models_lstm[[n]]  %>%
-	  predict(t1[[1]],batch_size = 1)  
+	lf_lstm = lake_models_lstm[[n]] %>%  
+		predict(test_data)
 
 	lf_bilstm = lake_models_bilstm[[n]]  %>%
-	  predict(t1[[1]],batch_size = 1) 
+	  predict(test_data)
+	  
+	nuse = length(ld_tmp[min_test:ntime_full,1])
 
-	lake_forecast_dnn[[n]] = 	lf_dnn*scale_ll[[n]][2]+scale_ll[[n]][1]
-	lake_forecast_gru[[n]] = 	lf_gru*scale_ll[[n]][2]+scale_ll[[n]][1]
-	lake_forecast_lstm[[n]] = 	lf_lstm*scale_ll[[n]][2]+scale_ll[[n]][1]
-	lake_forecast_bilstm[[n]] = 	lf_bilstm*scale_ll[[n]][2]+scale_ll[[n]][1]
+  #Get the RMSE
+  acc_dnn = sqrt(mean((lf_dnn -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
+  acc_gru = sqrt(mean((lf_gru -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
+  acc_lstm = sqrt(mean((lf_lstm-ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
+  acc_bilstm= sqrt(mean((lf_bilstm -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
 
-	lake_models_compare[[n]] = lake_compare 
+  rmse_all = c( acc_dnn, acc_gru, acc_lstm, acc_bilstm)
+
 
 }
 
