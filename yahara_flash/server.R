@@ -129,7 +129,8 @@ server <- function(input, output) {
   for(n in 1:n_lakes){
 
     #This is the github URL for the data. 
-    giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/lakemodel_",n,"_forecast.csv",
+    #Currently CNNLSTM
+    giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/lakemodel_",n,"_CNNLSTMforecast.csv",
         sep ="")
     lake_models_forecast[[n]] = tail(read.csv(curl(giturl)),lagsp )  
     print(lagsp)
