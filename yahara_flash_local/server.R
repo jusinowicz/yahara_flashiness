@@ -78,11 +78,11 @@ server <- function(input, output) {
     lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level), 
       data.frame(rn=rn.tmp$rn), lags)
 
-    years.tmp = data.frame( Years=format(lake_dates[[n]], "%Y") )
-    months.tmp = data.frame(Months = format(lake_dates[[n]], "%m") )
+    years.tmp = data.frame( Year=format(lake_dates[[n]], "%Y") )
+    months.tmp = data.frame(Month = format(lake_dates[[n]], "%m") )
 
     #Include the years and the months as columns
-    lake_data[[n]] = rbind( years.tmp, months.tmp, lake_data[[n]] )
+    #lake_data[[n]] = cbind( years.tmp, months.tmp, lake_data[[n]] )
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
@@ -91,7 +91,10 @@ server <- function(input, output) {
     lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
       (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2] ),
       data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
-  
+    
+    fut_precip_scaled = fut_precip
+    fut_precip_scaled$rn = (fut_precip$rn- scale_rn[1])/scale_rn[2]
+
     incProgress((n+2)/4, detail="Final melding")
 
   }
@@ -127,13 +130,18 @@ server <- function(input, output) {
   #been updated and predictions made:
   withProgress(message = 'Forecasting RNN (might take awhile)', value = 0, {
  
-  updateModelLSTM(lake_data_lstm)
-
+  #For now, choose one: 
+  #updateModelLSTM(lake_data_lstm)
+  #m_use_type = "LSTM"
+ 
+  updateModelDNN(lake_data_lstm)
+  m_use_type = "DNN"
+  
   #load(file = "todays_forecast.var")
   
 
   for(n in 1:n_lakes){
-    giturl = paste("./lakemodel_",n,"_forecast.csv",sep ="")
+    giturl = paste("./lakemodel_",n,"_",m_use_type,"forecast.csv",sep ="")
     lake_models_forecast[[n]] = tail(read.csv((giturl)),lagsp)  
 
     #Because the forecasts are generated as a kind of posterior 

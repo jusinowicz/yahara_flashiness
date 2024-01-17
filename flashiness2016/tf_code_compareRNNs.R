@@ -161,6 +161,12 @@ lake_models_cnnlstm = vector("list", n_lakes)
 
 #Forecasts
 lake_forecast_dnn = vector("list", n_lakes)
+lake_forecast_gru = vector("list", n_lakes)
+lake_forecast_lstm = vector("list", n_lakes)
+lake_forecast_bilstm = vector("list", n_lakes)
+lake_forecast_cnn = vector("list", n_lakes)
+lake_forecast_cnnlstm = vector("list", n_lakes)
+
 lake_models_compare = vector("list", n_lakes)
 
 #Model definition: 
@@ -240,14 +246,13 @@ lake_models_compare = vector("list", n_lakes)
 			bidirectional( 
 				layer_lstm(
 					units = 64, 
-					dropout=0.1,
 					activation="relu", 
-					recurrent_dropout=0.5,
 					return_sequences = TRUE,
 					#stateful = TRUE,
 					input_shape = list(NULL, dim(ld_tmp)[[-1]])
 				)
 			) %>%
+			layer_dropout(rate = 0.5) %>%
 	    layer_lstm(
 	    		units = 64,  
 					dropout=0.1, 
@@ -255,6 +260,7 @@ lake_models_compare = vector("list", n_lakes)
 					return_sequences = TRUE,
 					#stateful = TRUE
 				) %>%
+    	layer_dropout(rate = 0.5) %>%
 			(layer_dense(units = 1) )
 
 	  model %>% compile(
@@ -270,11 +276,11 @@ lake_models_compare = vector("list", n_lakes)
 		model = keras_model_sequential() %>%
 			layer_conv_1d(
 					filters=64, 
-					kernel_size=5, 
+					kernel_size=4, 
+					padding = "causal", 
 					activation="relu",
 					input_shape = list(NULL, dim(ld_tmp)[[-1]])
 				) %>%
-			layer_max_pooling_1d(pool_size=3) %>%
  			layer_dense(64, activation = 'relu') %>% 
 			layer_dense(units = 1)
 
@@ -289,25 +295,19 @@ lake_models_compare = vector("list", n_lakes)
 #CNN plus LSTM
 	build_and_compile_cnnlstm = function() {
 		model = keras_model_sequential() %>%
-			layer_conv_1d(
+				layer_conv_1d(
 					filters=64, 
-					kernel_size=3, 
+					kernel_size=4, 
+					padding = "causal", 
 					activation="relu",
 					input_shape = list(NULL, dim(ld_tmp)[[-1]])
 				) %>%
-			layer_max_pooling_1d(pool_size=3) %>%
-   		layer_conv_1d(
-					filters=64, 
-					kernel_size=3, 
-					activation="relu",
-				) %>%
 	    layer_lstm(
 	    		units = 64,  
-					dropout=0.1, 
-					recurrent_dropout=0.5,
 					return_sequences = TRUE,
 					#stateful = TRUE
 				) %>%
+    	layer_dropout(rate = 0.5) %>%
 			layer_dense(units = 1) 
 
 	  model %>% compile(
@@ -317,9 +317,6 @@ lake_models_compare = vector("list", n_lakes)
 
 	  model
 	}
-
-
-
 
 for(n in 1:n_lakes){ 
 	
@@ -401,7 +398,7 @@ for(n in 1:n_lakes){
 	#Note: balance lookback, delay, and batch size to maximize training 
 	#efficiency! 
 	#How long of a series to use at a time
-	lookback = 20
+	lookback = 10
 	#Use every time point
 	step = 1
 	#Number of time steps into the future to predict
@@ -496,7 +493,7 @@ for(n in 1:n_lakes){
 	lake_models_dnn[[n]] %>% fit(
 		train_gen,
 		steps_per_epoch = 80, #test_steps,
-  	epochs = 20,
+  	epochs = 40,
   	validation_data = val_gen,
  		validation_steps = val_steps,
 		callbacks = list(dnn_callback,callback_tensorboard(dnn_log )) # Pass callback to training
@@ -508,7 +505,7 @@ for(n in 1:n_lakes){
 	lake_models_gru[[n]] %>% fit(
 		train_gen,
 		steps_per_epoch = 80, #test_steps,
-  	epochs = 20,
+  	epochs = 40,
   	validation_data = val_gen,
  		validation_steps = val_steps,
 		callbacks = list(gru_callback,callback_tensorboard(gru_log )) # Pass callback to training
@@ -519,7 +516,7 @@ for(n in 1:n_lakes){
 	lake_models_lstm[[n]] %>% fit(
 		train_gen,
 		steps_per_epoch = test_steps,
-  	epochs = 20,
+  	epochs = 40,
   	validation_data = val_gen,
  		validation_steps = val_steps,
 		callbacks = list(lstm_callback, 
@@ -531,7 +528,7 @@ for(n in 1:n_lakes){
 	lake_models_bilstm[[n]] %>% fit(
 		train_gen,
 		steps_per_epoch = test_steps,
-  	epochs = 20,
+  	epochs = 40,
   	validation_data = val_gen,
  		validation_steps = val_steps,
 		callbacks = list(bilstm_callback, 
@@ -543,7 +540,7 @@ for(n in 1:n_lakes){
 	lake_models_cnn[[n]] %>% fit(
 		train_gen,
 		steps_per_epoch = test_steps,
-  	epochs = 20,
+  	epochs = 40,
   	validation_data = val_gen,
  		validation_steps = val_steps,
 		callbacks = list(cnn_callback, 
@@ -551,11 +548,11 @@ for(n in 1:n_lakes){
 	)
 
 	#Fit the model to training data
-	#tensorboard(bilstm_log )
+	#tensorboard(cnnlstm_log )
 	lake_models_cnnlstm[[n]] %>% fit(
 		train_gen,
 		steps_per_epoch = test_steps,
-  	epochs = 20,
+  	epochs = 40,
   	validation_data = val_gen,
  		validation_steps = val_steps,
 		callbacks = list(cnnlstm_callback, 
@@ -565,8 +562,9 @@ for(n in 1:n_lakes){
 
 	#look at the forecasts and get RMSE for each
 	#Need to restructure test data for the RNNs: 
-	test_data = array( ld_tmp[min_test:ntime_full, ], 
-											dim = c(1, 636,14 ) )
+	td_tmp = ld_tmp[min_test:ntime_full, ]
+	test_data = array( td_tmp, 
+											dim = c(1, dim(td_tmp)[1], dim(td_tmp)[2] ) )
 
 	lf_dnn = lake_models_dnn[[n]]  %>%
 	  predict(test_data[1,,]) 
@@ -583,7 +581,7 @@ for(n in 1:n_lakes){
 	lf_cnn = lake_models_cnn[[n]]  %>%
 	  predict(test_data)
 
-	lf_cnnlstm = lake_models_bilstm[[n]]  %>%
+	lf_cnnlstm = lake_models_cnnlstm[[n]]  %>%
 	  predict(test_data)
 	  
 	nuse = length(ld_tmp[min_test:ntime_full,1])
@@ -596,7 +594,7 @@ for(n in 1:n_lakes){
   acc_cnn= sqrt(mean((lf_cnn -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
   acc_cnnlstm= sqrt(mean((lf_cnnlstm -ld_tmp[min_test:ntime_full,1])^2,na.rm=T))
 
-  rmse_all = c( acc_dnn, acc_gru, acc_lstm, acc_bilstm)
+  rmse_all = c( acc_dnn, acc_gru, acc_lstm, acc_bilstm,acc_cnn, acc_cnnlstm)
 
 
 }
