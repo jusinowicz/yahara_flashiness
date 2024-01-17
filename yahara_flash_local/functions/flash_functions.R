@@ -674,6 +674,226 @@ fit_predDNN = function(lake_data_lstm,fut_precip_scaled, lagsp,
 
 }
 
+
+##############################################################
+# Wrap keras and the RNN model fitting and prediction in a 
+# function that can be called by global.R and server.R. 
+# This version uses keras to initialize, create lstm layer, 
+# relu, adam. 
+#
+# Predict the next N days of lake level using historical data
+# of lake level and precip. 
+#
+# This is a DNN with two dense layers. 
+#
+# Parameters for the generator function, which can 
+# influence how well the models train: 
+#
+# lookback	How long of a series to use at a time
+# step 			Which time points (1 = use every time point)
+# delay			Number of time steps into the future to predict
+# batch_size
+# predser 	Index of label	
+##############################################################
+
+fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp, 
+	lookback = 10, step = 1, delay = 1, batch_size = 20, predser=1 ){
+	
+	#Store fitted models
+	lake_models_cnnlstm = vector("list", n_lakes)
+
+	#Forecasts
+  #How many days are we forecasting? 
+  n_days = dim(fut_precip_scaled)[1]
+
+	#Iterate forecasts for uncertainty
+	nits = 1
+	lake_forecast_cnnlstm = vector("list", n_lakes)
+	for (n in 1:n_lakes ){
+		lake_forecast_cnnlstm[[n]] = matrix(0,lagsp,nits)
+	}
+
+	#Model definition: 
+	#This function is for tensorflow to create the RNN. This is 
+	#analogous to the "model form"   
+#CNN plus LSTM
+	build_and_compile_cnnlstm = function() {
+		model = keras_model_sequential() %>%
+				layer_conv_1d(
+					filters=64, 
+					kernel_size=4, 
+					padding = "causal", 
+					activation="relu",
+					input_shape = list(NULL, dim(ld_tmp)[[-1]])
+				) %>%
+	    layer_lstm(
+	    		units = 64,  
+					return_sequences = TRUE,
+					#stateful = TRUE
+				) %>%
+    	layer_dropout(rate = 0.5) %>%
+			layer_dense(units = 1) 
+
+	  model %>% compile(
+	    loss = 'mean_absolute_error',
+	    optimizer = optimizer_adam()
+	  )
+
+	  model
+	}
+
+	for(n in 1:n_lakes){ 
+
+	##########################################################################
+	#Create the save points for models
+	##########################################################################
+
+		cnnlstm_checkpoint_path = paste("./CNNLSTM/", "lakeCNNLSTM",n,".tf", sep="")
+		cnnlstm_checkpoint_dir = fs::path_dir(cnnlstm_checkpoint_path)
+
+		cnnlstm_log = "logs/run_cnnlstm"
+
+		# Create a callback that saves the model's weights
+		cnnlstm_callback = callback_model_checkpoint(
+		  filepath = cnnlstm_checkpoint_path,
+		  #save_weights_only = TRUE,
+		  verbose = 1
+		)
+
+		
+		##########################################################################
+		#Data processing section to make data sets: truncate, normalize, split 
+		##########################################################################
+		#Note: balance lookback, delay, and batch size to maximize training 
+		#efficiency! 
+
+		#Chop off time 
+		ld_tmp = lake_data_lstm[[n]][,-1]
+
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lags+1)), ]
+		ntime_full = dim(ld_tmp)[1]
+
+		#Need to convert ld_tmp to a matrix
+		ld_tmp = as.matrix(ld_tmp)
+
+		#Since the model fitting has already been done elsewhere, use
+		#the whole set for training: 
+		min_train = 1
+		max_train = NULL 
+
+		#Use generator function to instantiate three generators: 
+		#one for training, one for validation, and one for testing. 
+		#Each will look at different temporal segments of the original 
+		#data: the training generator looks at the first 2/3 timesteps, 
+		#the validation generator looks at the following 1/3, and the test 
+		#generator looks at the last time step.
+
+		#Training set 
+		train_gen = generator(
+		  ld_tmp,
+		  lookback = lookback,
+		  delay = delay,
+		  min_index = min_train,
+		  max_index = max_train,
+		  #shuffle = TRUE,
+		  step = step,
+		  batch_size = batch_size,
+		  predseries = predser  
+		)
+
+		##########################################################################
+		#Model fitting section.
+		##########################################################################
+		#Build the model
+
+		#If it exists, load it. Otherwise, compile it fresh:  
+		if(file.exists(cnnlstm_checkpoint_path)){ 
+			lake_models_cnnlstm[[n]]  = load_model_tf(paste(cnnlstm_checkpoint_path) ) 
+		}else {  
+			lake_models_cnnlstm[[n]]  = build_and_compile_cnnlstm()
+		}
+
+		#Fit the model to training data
+		#tensorboard(dnn_log )
+
+		lake_models_cnnlstm[[n]] %>% fit(
+			train_gen,
+			steps_per_epoch = 80, #test_steps,
+	  	epochs = 20,
+			callbacks = list(cnnlstm_callback,callback_tensorboard(cnnlstm_log )) # Pass callback to training
+		)
+
+			##########################################################################
+			#Forecasting
+			##########################################################################
+		 	ot = dim(lake_data_lstm[[n]])[[1]]
+		 	#Get the last section of data table for lags
+			lt_tmp = as.matrix(tail(as.data.frame(ld_tmp),100))
+ 			lt = array( lt_tmp, 
+											dim = c(1, dim(lt_tmp)[1], dim(lt_tmp)[2] ) )
+
+      #Temporarily store predicted lake level
+      pr_tmp = matrix(0, n_days, 3)
+      pr_tmp[,1] = fut_precip_scaled$rn
+      colnames(pr_tmp) = c("rn", "level", "se")
+
+      cur_pred = 100 #Start an index for predicted value
+
+      for (t in 1:n_days){
+
+				for ( p in 1:nits){
+					lake_forecast_cnnlstm[[n]][t,p] = 
+							predict(lake_models_cnnlstm[[n]], lt)[cur_pred] 
+				}
+
+        pr_tmp[t,2] = mean(lake_forecast_cnnlstm[[n]][t,])
+        pr_tmp[t,3] = sqrt(var(lake_forecast_cnnlstm[[n]][t,] ))
+
+        #Now update lt with the forecasted data
+        if (t < n_days){ 
+        	lt_add = t( c(pr_tmp[t,2],lt[1,cur_pred,1:(lagsp-1)],
+          pr_tmp[t,1],
+          lt[1,cur_pred,(lagsp+1):(dim(ld_tmp)[2]-1) ] ) )
+          rownames(lt_add) = (ot+t)
+          lt_new = rbind(lt[1,,], lt_add)
+          lt = array( lt_new, 
+											dim = c(1, dim(lt_new)[1], dim(lt_new)[2] ) )
+
+          cur_pred = cur_pred+1
+        }else{   }
+      
+      }
+
+			#This will keep adding the newest forecasts to the same file to keep
+			#a rolling table of past predictions.
+			tbl_file = paste("lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
+			if(file.exists(tbl_file)){
+				tbl_tmp = read.csv(tbl_file)
+				tbl_row = dim(tbl_tmp)[1]
+				tbl_col = dim(tbl_tmp)[2]
+				#Add a new row
+				tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
+				#Overwrite the existing data in the window 
+				#with the new predictions
+				tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			
+			}else {
+				#If the file does not already exist
+				tbl_tmp = lake_forecast_cnnlstm[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			}
+
+
+
+	}
+
+	save(file = "todays_CNNLSTMforecast.var", lake_forecast_cnnlstm )
+
+}
+
+
 ##############################################################
 # Wrap keras and the LSTM model fitting and prediction in a 
 # function that can be called by global.R and server.R. 

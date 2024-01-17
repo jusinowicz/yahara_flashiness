@@ -398,7 +398,7 @@ updateModelLSTM = function(lake_data_lstm, lagsp = 7 ){
 # 
 ###############################################################################
 
-updateModelDNN = function(lake_data_lstm, lagsp = 7 ){
+updateModelDNN = function(lake_data_lstm,  fut_precip_scaled, lagsp = 7 ){
 
   #First check to see if the fitted models already exist. If they don't, 
   #run the code to fit the models. This is time consuming! 
@@ -436,6 +436,53 @@ updateModelDNN = function(lake_data_lstm, lagsp = 7 ){
   }else{ 
     #We have to fit the models.This is a wrapper for keras
     fit_predDNN(lake_data_lstm, fut_precip_scaled, lagsp ) 
+  }
+
+}
+
+
+###############################################################################
+# 
+###############################################################################
+
+updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7 ){
+
+  #First check to see if the fitted models already exist. If they don't, 
+  #run the code to fit the models. This is time consuming! 
+  #The standard I have chosen to employ is to name stored fitted models 
+  #with suffix ".var"
+  model_files = list.files("./CNNLSTM/")
+  model_true = grepl("*CNNLSTM*.*tf|*tf.*CNNLSTM*", model_files)
+
+  #Test if the files/folders exist and have been updated today
+  if(  sum(model_true) >= 1 ){   
+    
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+
+    #Were they created today? 
+    tyes = 0 
+    for (f in 1:n_files){
+      #Get the dates on model files
+      get_dates = file.info(list.files(
+        paste("./CNNLSTM/",model_files[f],sep=""),
+        full.names=T))$mtime
+      #Find the latest date
+      latest_date = max(as_date (get_dates))
+      #Check it against today
+      if( latest_date == current_date){ tyes = tyes +1 }
+    }
+
+    #If fewer than n_files have been updated then run the updates
+    if ( tyes < n_files){
+      #We have to update each model.This is a wrapper for keras
+      fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp ) 
+    } 
+ 
+  }else{ 
+    #We have to fit the models.This is a wrapper for keras
+    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp ) 
   }
 
 }
