@@ -159,7 +159,7 @@ server <- function(input, output) {
   ##############################################################
   #Mendota
   ##############################################################
-  #Max lake level
+  #Max lake level 
   mpm = max(pred_lakes[[1]]$level)
   col_use  = "aqua"
 

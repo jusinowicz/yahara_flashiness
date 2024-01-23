@@ -14,9 +14,8 @@ source("./functions/flash_functions.R")
 #Global variables
 ##############################################################
 #USGS site keys. Currently includes Mendota, Monona, Waubesa, 
-#Kegonsa, Wingra
-site_keys = c("05428000", "05429000", "05429485","425715089164700", 
-  "05429118")
+#Kegonsa, (not Wingra "425715089164700")
+site_keys = c("05428000", "05429000","425715089164700",  "05429485")
 n_lakes = length(site_keys)
 
 #The base urls used by the USGS for lake data
@@ -25,18 +24,24 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 #Parameters from the NASA POWER data collection
 nasa_pars = c("PRECTOTCORR")
 
+#Lake prefixes
+lake_pre = c("men","mon","keg","wau")
+#Gauge heights
+g_h = c(839.96, 839.86, 840.01, 839.91)
+
 #Where the historical data should start
 #How long of a data set? Currently 10 years
 #real_start = list( ymd("1980-1-1"), ymd("1980-1-1")) #Too big to save
-real_start = list( ymd("2013-1-1"), ymd("2013-1-1"))
+real_start = list( ymd("2013-1-1"), ymd("2013-1-1"), ymd("2013-1-1"),
+              ymd("2013-1-1") )
 
 #Today
 current_date = ymd( Sys.Date() )
   
 #Where the lake stage and rain data live: 
 lake_data = vector("list", n_lakes) #GAM formatted
+lake_data_temp = vector("list", n_lakes) #LSTM formatted
 lake_data_lstm = vector("list", n_lakes) #LSTM formatted
-lake_data_dnn = vector("list", n_lakes) #LSTM formatted
 
 #Forecasts:
 lake_models_forecast = vector("list", n_lakes) 
@@ -56,6 +61,16 @@ model_form [[1]] = "level ~
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 model_form [[2]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[3]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[4]] = "level ~ 
   s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
   s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
@@ -83,17 +98,22 @@ flash_col= c("aqua", "orange", "red")
 #all of the necessary data procesing. 
 ###############################################################################
 
-updateLake = function (lake_table, start_date, current_date, site_key) {
+updateLake = function (lake_table, start_date, current_date, site_key, gh) {
 
-  #Use the USGS address format to get data over the date range (62615)
+  #Use the USGS address format to get data over the date range (62615, 00065)
+
+  #Make a special case for Monona, which does not seem to have data
+  #as elevation, but only relative to gauge. 
   url1 = paste(url_base[1], site_key, "&startDT=", start_date,
-    "&endDT=",current_date,"&parameterCd=00060,00065&siteStatus=all",sep="" )
-  
+  "&endDT=",current_date,"&parameterCd=00060,00065&siteStatus=all",sep="" )
   lt_temp = as.data.frame(read_delim(print(url1), comment = "#", delim="\t"))
+  #Add 839.86 to gauge height
+  lt_temp[,5] = as.numeric(as.character(lt_temp[,5]))
+  lt_temp[,5] = lt_temp[,5] + gh
+
   lt_temp = lt_temp[-1,]
   lt_temp[,"datetime"] = as.POSIXct(lt_temp[,"datetime"],
                        format = '%Y-%m-%d %H:%M')
-  lt_temp[,5] = as.numeric(as.character(lt_temp[,5]))
 
   lt_temp = lt_temp[,c(3, 5)]
   colnames(lt_temp ) = c("time", "level")
@@ -146,44 +166,37 @@ updateHistoric = function() {
   last_date = vector("list",n_lakes)
   last_rain = NULL
 
-  #Load the current data files
-  current_date = ymd( Sys.Date() ) #Current date. Could be set to other
-  lake_table[[1]] = read.csv(file = "./data/men_hist.csv")
   
-  #This is necessary because R ts objects convert time to decimal
-  #format. Sometimes this pops up as an issue. 
-  if (is.double(lake_table[[1]][,"time"])) {
-    lake_table[[1]][,"time"] = lake_table[[1]][,"time"] %>% 
-                                as.numeric() %>% 
-                                date_decimal() %>% 
-                                as_date()
-  }else{
-    lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
+
+  for (n in 1:n_lakes){
+    #file name
+    fn = paste("./data/",lake_pre[n], "_hist.csv",sep="")
+
+    #Load the current data files
+    current_date = ymd( Sys.Date() ) #Current date. Could be set to other
+    lake_table[[n]] = read.csv(file = paste(fn))
+  
+    #This is necessary because R ts objects convert time to decimal
+    #format. Sometimes this pops up as an issue. 
+    if (is.double(lake_table[[n]][,"time"])) {
+      lake_table[[n]][,"time"] = lake_table[[n]][,"time"] %>% 
+                                  as.numeric() %>% 
+                                  date_decimal() %>% 
+                                  as_date()
+    }else{
+      lake_table[[n]][,"time"] = ymd(lake_table[[n]][,"time"])
+    }
+  
+    #Make backups of previous file:
+    fn_back = paste("./data/",lake_pre[n], "_hist.csv.bck",sep="")
+    file.copy(from = fn, to =fn_back)
   }
-
-
-  lake_table[[2]] = read.csv(file = "./data/mon_hist.csv")
-  if (is.double(lake_table[[2]][,"time"])) {
-    lake_table[[2]][,"time"] = lake_table[[2]][,"time"] %>% 
-                                as.numeric() %>% 
-                                date_decimal() %>% 
-                                as_date()
-  }else{
-    lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
-  }
-
+    
   daily_precip = read.csv(file = "./data/rain_hist.csv")
   daily_precip[,"time"] = ymd(daily_precip[,"time"])
 
   #Make backups of previous file:
-  file.copy(from = "./data/men_hist.csv", to ="./data/men_hist.csv.bck")
-  file.copy(from = "./data/mon_hist.csv", to ="./data/mon_hist.csv.bck")
   file.copy(from = "./data/rain_hist.csv", to ="./data/rain_hist.csv.bck")
-
-  # file.copy(from = "men_hist.csv", to ="men_hist.csv.bck")
-  # file.copy(from = "mon_hist.csv", to ="mon_hist.csv.bck")
-  # file.copy(from = "rain_hist.csv", to ="rain_hist.csv.bck")
-
 
   #Get the last dates entered. If they don't match to the current date
   #then update the data with the functions updateLake and updateRain. 
@@ -205,7 +218,10 @@ updateHistoric = function() {
 
   #For the lakes
   for ( n in 1:n_lakes){ 
-    
+   
+    #file name
+    fn = paste("./data/",lake_pre[n], "_hist.csv",sep="")
+
     site_key = site_keys[n]
 
     last_date[[n]] = lake_table[[n]][nrow(lake_table[[n]]),"time"]
@@ -213,11 +229,15 @@ updateHistoric = function() {
     if(last_date[[n]] != current_date  ){ 
       lake_table[[n]] = rbind(lake_table[[n]],
           updateLake(lake_table[[n]], start_date = last_date[[n]], 
-          current_date = current_date, site_key = site_key ) )
+          current_date = current_date, site_key = site_key, 
+          gh = g_h[n] ) )  
       lake_table[[n]] = lake_table[[n]][-( (nrow(lake_table[[n]])-2):
         nrow(lake_table[[n]])), ]
     }
 
+     # lake_table[[n]] = 
+     #      updateLake(lake_table[[n]], start_date = start_date, 
+     #      current_date = current_date, site_key = site_key, gh = g_h[n] )  
 
     #Remove duplicated dates
   	lake_table[[n]] = lake_table[[n]][!duplicated(lake_table[[n]]$time),]
@@ -225,15 +245,12 @@ updateHistoric = function() {
     lake_data[[n]] = lake_table[[n]] %>%
         inner_join(daily_precip, by = "time" ) 
 
+    write.table(lake_data[[n]][,1:2], file = paste(fn), sep=",")
+
   }
 
-  write.table(lake_data[[1]][,1:2], file = "./data/men_hist.csv", sep=",")
-  write.table(lake_data[[2]][,1:2], file = "./data/mon_hist.csv", sep=",")
   write.table(lake_data[[1]][,c(1,3)], file = "./data/rain_hist.csv", sep=",")
 
-  # write.table(lake_data[[1]][,1:2], file = "men_hist.csv", sep=",")
-  # write.table(lake_data[[2]][,1:2], file = "mon_hist.csv", sep=",")
-  # write.table(lake_data[[1]][,c(1,3)], file = "rain_hist.csv", sep=",")
 }
 
 ###############################################################################
@@ -284,7 +301,8 @@ updateModel = function (lake_data, model_form){
     #for(n in 1:n_lakes){ mod.tmp = new_models[[n]]; 
     #         saveRDS(mod.tmp,file = paste(model_saves[[n]]) )} 
 
-    #These are the two model compenents we'll save: 
+    #These are the two model compenents we'll save:
+    new_models = lake_models 
     models_Xp = vector("list", n_lakes)
     models_coef = vector("list", n_lakes)
     models_Vp = vector("list", n_lakes)

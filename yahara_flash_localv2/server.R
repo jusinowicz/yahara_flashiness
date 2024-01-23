@@ -11,10 +11,9 @@ server <- function(input, output) {
   #Preallocate the important historical data tables 
   lake_table = vector("list", n_lakes)
   daily_precip = vector("list", n_lakes)
-  #Final data set
-  lake_data = vector("list", n_lakes)
   #Readable dates for plotting
   lake_dates = vector("list", n_lakes)
+  #Scales of data
   scale_ll = vector("list", n_lakes)
 
   incProgress(1/4, detail="Getting forecast")
@@ -28,20 +27,24 @@ server <- function(input, output) {
 
   incProgress(2/4, detail="Loading historic data")
   #Load the historic data sets
-  lake_table[[1]] = read.csv(file = "./data/men_hist.csv")
-  lake_table[[1]][,"time"] = ymd(lake_table[[1]][,"time"])
-  lake_table[[2]] = read.csv(file = "./data/mon_hist.csv")
-  lake_table[[2]][,"time"] = ymd(lake_table[[2]][,"time"])
   daily_precip[[1]] = read.csv(file = "./data/rain_hist.csv")
   daily_precip[[1]][,"time"] = ymd(daily_precip[[1]][,"time"])
-  daily_precip[[2]] = daily_precip[[1]]
 
-  #Truncate the data 
-  for (n in 1:n_lakes){ 
+  for (n in 1:n_lakes){
+    #file name
+    fn = paste("./data/",lake_pre[n], "_hist.csv",sep="")
+
+    #Load the current data files
+    lake_table[[n]] = read.csv(file = paste(fn))
+    lake_table[[n]][,"time"] = ymd(lake_table[[n]][,"time"])
+
+    #Truncate the data  
     lake_table[[n]] = lake_table[[n]][lake_table[[n]][,"time"] > real_start[[n]], ]
 
+    daily_precip[[n]] = daily_precip[[1]]
   }
-  
+
+   
   #Final processing steps of the raw data which joins lake
   #and precip and truncates to desired start date. 
   for (n in 1: n_lakes){
@@ -86,11 +89,14 @@ server <- function(input, output) {
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
-    scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm = T), sqrt(var(lake.tmp$level,na.rm = T)) )
+    # scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm = T), sqrt(var(lake.tmp$level,na.rm = T)) )
+    # scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
+    scale_ll[[n]] = c ( mean(lake_table[[n]]$level,na.rm = T), sqrt(var(lake_table[[n]]$level,na.rm = T)) )
     scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
-    lake_data_lstm[[n]] = make.flashiness.object(data.frame(level= 
-      (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2] ),
-      data.frame(rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] ), lagsp-1, auto=F, orders=lagsp-1)
+
+    lake_data_temp[[n]] = data.frame(
+      time = lake_table[[n]]$time,
+      level= (lake_table[[n]]$level - scale_ll[[n]] [1])/scale_ll[[n]] [2])
     
     fut_precip_scaled = fut_precip
     fut_precip_scaled$rn = (fut_precip$rn- scale_rn[1])/scale_rn[2]
@@ -98,6 +104,41 @@ server <- function(input, output) {
     incProgress((n+2)/4, detail="Final melding")
 
   }
+
+
+  #Build out the final data sets with lags of other lake levels
+  #Join the lake and rain data to match up dates
+  lake_data_all = lake_data_temp[[1]]
+  for (n in 2:n_lakes){
+    lake_data_all = lake_data_all %>%
+                        inner_join ( lake_data_temp[[n]],by = "time")
+  }
+
+  #names
+  colnames(lake_data_all) = c("time",lake_pre)
+  
+  #add precip 
+  lake_data_all = lake_data_all %>%
+                        inner_join ( daily_precip[[n]],by = "time")
+
+  #Now make the data sets for each lake, with lags of all lakes
+  for (n in 1:n_lakes){
+    l_others = 1:n_lakes
+    l_others = l_others[-n]
+
+    #Make the lake specific data frame 
+    lake_data_temp[[n]] = data.frame(lake_data_all$time, 
+                          level = lake_data_all[,(n+1)],
+                          lake_data_all[1+l_others])
+
+    #Now feed it to the function to add the lags
+     lake_data_lstm[[n]] = make.flashiness.object(
+      data.frame(level = lake_data_temp[[n]]$level), as.data.frame(lake_data_temp[[n]][,3:(n_lakes+1)]),
+      matrix(lagsp-1,1,(n_lakes-1) ), 
+      auto=F, orders=lagsp-1)
+
+  }
+
 })
   ##############################################################
   #PART 2: Forecasting with GAMs
