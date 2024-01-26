@@ -215,6 +215,7 @@ server <- function(input, output) {
   ##############################################################
   #Max lake level
   mpm = max(pred_lakes[[1]]$level)
+  mr = max(fut_precip$rn)
   col_use  = "aqua"
   #Check against the flood levels: 
   if( mpm < thresh_10[1] ) { col_use = flash_col[1]}
@@ -280,8 +281,8 @@ server <- function(input, output) {
         aes(x = time, y=level),col = "blue")+
       geom_ribbon(data =lake_models_forecast[[1]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
-      ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.4, 
-        max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.4)+
+      ylim(max(pred_lakes[[1]]$level)-max(pred_lakes[[1]]$level)*.01, 
+        max(pred_lakes[[1]]$level)+max(pred_lakes[[1]]$level)*.01)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
       ylab("Lake level (ft) ")+
@@ -321,7 +322,7 @@ server <- function(input, output) {
         aes(x = time, y=level),col = "blue")+
       geom_ribbon(data =lake_models_forecast[[1]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill ="blue", alpha = 0.2)+
-      ylim(7, thresh_100[1] +1 )+
+      ylim( min(lake_data[[1]]$level ), thresh_100[1] +1 )+
       theme_minimal() + theme(text=element_text(size=21)) +
       xlab("Date")+
       ylab("Lake level (ft) ") +
@@ -338,10 +339,10 @@ server <- function(input, output) {
 mpm2 = max(pred_lakes[[2]]$level)
 col_use2  = "aqua"
 #Check against the flood levels: 
-if( mpm2 < thresh_10[1] ) { col_use2 = flash_col[1]}
-if( mpm2 >= thresh_10[1] && mpm2 < thresh_100[1] ){ 
+if( mpm2 < thresh_10[2] ) { col_use2 = flash_col[1]}
+if( mpm2 >= thresh_10[2] && mpm2 < thresh_100[2] ){ 
   col_use2 = flash_col[2]}
-if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
+if( mpm2 >= thresh_100[2] ){ col_use2 = flash_col[3]}
 
  #The maximum rainfall in the upcoming days 
     output$max_rain2 = renderInfoBox({
@@ -399,8 +400,8 @@ if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
         aes(x = time, y=level),col = "blue") +
       geom_ribbon(data =lake_models_forecast[[2]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
-      ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*.4, 
-        max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*.4)+
+      ylim(max(pred_lakes[[2]]$level)-max(pred_lakes[[2]]$level)*0.01, 
+        max(pred_lakes[[2]]$level)+max(pred_lakes[[2]]$level)*0.01)+
       theme_minimal() + theme(text=element_text(size=21)) +
       ggtitle("Forecasted lake level") + xlab("Date")+
       ylab("Lake level (ft) ")+
@@ -440,7 +441,7 @@ if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill= "red", alpha = 0.2)+
       geom_ribbon(data = lake_models_forecast[[2]], 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96),fill ="blue", alpha = 0.2)+
-      ylim(1, thresh_100[2] +1 )+      
+      ylim(min(lake_data[[2]]$level ), thresh_100[2] +1 )+      
       theme_minimal() + theme(text=element_text(size=21)) +
       xlab("Date")+
       ylab("Lake level (ft) ") +
@@ -449,6 +450,246 @@ if( mpm2 >= thresh_100[1] ){ col_use2 = flash_col[3]}
       geom_hline(yintercept=thresh_100[2], col="red", linetype = "dotted")
 
    } )
+
+##############################################################
+#Waubesa
+##############################################################
+#Max lake level
+mpm3 = max(pred_lakes[[3]]$level)
+col_use3  = "aqua"
+#Check against the flood levels: 
+if( mpm3 < thresh_10[1] ) { col_use2 = flash_col[1]}
+if( mpm3 >= thresh_10[1] && mpm3 < thresh_100[1] ){ 
+  col_use2 = flash_col[2]}
+if( mpm3 >= thresh_100[1] ){ col_use2 = flash_col[3]}
+
+ #The maximum rainfall in the upcoming days 
+    output$max_rain3 = renderInfoBox({
+    mr = max(fut_precip$rn)
+
+    infoBox(
+     "Peak 7-day rainfall (in)",
+      value = formatC(mr, digits = 1, format = "f"),
+      icon = icon("cloud-rain"),
+      color = col_use3#if (mr >= year10) "yellow" else "aqua"
+    )
+  })  
+
+    #The peak lake-level 
+    output$max_peak_wau = renderInfoBox({
+
+      infoBox(
+        "Peak 7-day lake (ft)",
+        value = formatC(mpm3, digits = 1, format = "f"),
+        icon = icon("water"),
+        color = col_use3 #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+ 
+    #The confidence interval 
+    output$pred_con_wau= renderInfoBox({
+      #Get the max from the time-series
+      mpm = max(pred_lakes[[3]]$level)
+      #Get its se
+      se_wau  = pred_lakes[[3]]$se[which(pred_lakes[[3]]$level == mpm)]
+      #95% CIs 
+      pcwau = 1.96*se_wau
+      
+      infoBox(
+        "95% CI",
+        value = formatC(pcwau, digits = 1, format = "f"),
+        icon = icon("chart-line"),
+        color = col_use3 #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+
+      #Plot the time series of predictions
+
+  output$pred_plot3=renderPlot({
+      ggplot( ) + 
+      geom_line(data = pred_lakes[[3]], aes(x = time, y=level),
+        col="red", linetype = "dotted") +
+      geom_point(data = pred_lakes[[3]], aes(x = time, y=level),
+        col="red") +
+      geom_ribbon(data = pred_lakes[[3]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill = "red", alpha = 0.2)+
+      geom_line(data = lake_models_forecast[[3]], 
+        aes(x = time, y=level),col = "blue", linetype = "dotted") +
+      geom_point(data = lake_models_forecast[[3]], 
+        aes(x = time, y=level),col = "blue") +
+      geom_ribbon(data =lake_models_forecast[[3]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
+      ylim(max(pred_lakes[[3]]$level)-max(pred_lakes[[3]]$level)*0.01, 
+        max(pred_lakes[[3]]$level)+max(pred_lakes[[3]]$level)*0.01)+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ")+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
+   } )
+
+#Plot the historical and prediction time series
+
+  low_limx3 = reactiveValues(limx3 = current_date%m-%months(3) )
+
+  observeEvent(input$m032, {
+    low_limx3$limx3 = current_date%m-%months(3)
+  })
+
+  observeEvent(input$yr12, {
+    low_limx3$limx3 = current_date - years(1)
+  })  
+
+  observeEvent(input$yr32, {
+    low_limx3$limx3 = current_date - years(3)
+  })
+
+  observeEvent(input$yr102, {
+    low_limx3$limx3 = current_date - years(10)
+  })  
+
+
+  output$full_plot3=renderPlot({
+
+      ggplot( ) +
+      geom_line(data = lake_data[[3]], aes(x = dates, y=level) ) +
+      geom_line(data = pred_lakes[[3]], aes(x = time, y=level), col="red") +
+      geom_line(data = lake_models_forecast[[3]], 
+        aes(x = time, y=level),col = "blue")+
+      geom_ribbon(data = pred_lakes[[3]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill= "red", alpha = 0.2)+
+      geom_ribbon(data = lake_models_forecast[[3]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96),fill ="blue", alpha = 0.2)+
+      ylim(min(lake_data[[3]]$level ), thresh_100[1] +1 )+      
+      theme_minimal() + theme(text=element_text(size=21)) +
+      xlab("Date")+
+      ylab("Lake level (ft) ") +
+      xlim(low_limx3$limx3, current_date+8)+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
+
+   } )
+
+##############################################################
+#Kegonsa
+##############################################################
+#Max lake level
+mpm4 = max(pred_lakes[[4]]$level)
+col_use4  = "aqua"
+#Check against the flood levels: 
+if( mpm4 < thresh_10[1] ) { col_use4 = flash_col[1]}
+if( mpm4 >= thresh_10[1] && mpm4 < thresh_100[1] ){ 
+  col_use4 = flash_col[2]}
+if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
+
+ #The maximum rainfall in the upcoming days 
+    output$max_rain4 = renderInfoBox({
+    mr = max(fut_precip$rn)
+
+    infoBox(
+     "Peak 7-day rainfall (in)",
+      value = formatC(mr, digits = 1, format = "f"),
+      icon = icon("cloud-rain"),
+      color = col_use4 #if (mr >= year10) "yellow" else "aqua"
+    )
+  })  
+
+    #The peak lake-level 
+    output$max_peak_keg = renderInfoBox({
+
+      infoBox(
+        "Peak 7-day lake (ft)",
+        value = formatC(mpm4, digits = 1, format = "f"),
+        icon = icon("water"),
+        color = col_use4 #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+ 
+    #The confidence interval 
+    output$pred_con_keg = renderInfoBox({
+      #Get the max from the time-series
+      mpm = max(pred_lakes[[4]]$level)
+      #Get its se
+      se_keg  = pred_lakes[[4]]$se[which(pred_lakes[[4]]$level == mpm)]
+      #95% CIs 
+      pckeg = 1.96*se_keg
+      
+      infoBox(
+        "95% CI",
+        value = formatC(pckeg, digits = 1, format = "f"),
+        icon = icon("chart-line"),
+        color = col_use4 #if (mr >= year10) "yellow" else "aqua"
+      )
+    })  
+
+      #Plot the time series of predictions
+
+  output$pred_plot4=renderPlot({
+      ggplot( ) + 
+      geom_line(data = pred_lakes[[4]], aes(x = time, y=level),
+        col="red", linetype = "dotted") +
+      geom_point(data = pred_lakes[[4]], aes(x = time, y=level),
+        col="red") +
+      geom_ribbon(data = pred_lakes[[4]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill = "red", alpha = 0.2)+
+      geom_line(data = lake_models_forecast[[4]], 
+        aes(x = time, y=level),col = "blue", linetype = "dotted") +
+      geom_point(data = lake_models_forecast[[4]], 
+        aes(x = time, y=level),col = "blue") +
+      geom_ribbon(data =lake_models_forecast[[4]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
+      ylim(max(pred_lakes[[4]]$level)-max(pred_lakes[[4]]$level)*0.01, 
+        max(pred_lakes[[4]]$level)+max(pred_lakes[[4]]$level)*0.01)+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ")+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
+   } )
+
+#Plot the historical and prediction time series
+
+  low_limx4 = reactiveValues(limx4 = current_date%m-%months(3) )
+
+  observeEvent(input$m032, {
+    low_limx4$limx4 = current_date%m-%months(3)
+  })
+
+  observeEvent(input$yr12, {
+    low_limx4$limx4 = current_date - years(1)
+  })  
+
+  observeEvent(input$yr32, {
+    low_limx4$limx4 = current_date - years(3)
+  })
+
+  observeEvent(input$yr102, {
+    low_limx4$limx4 = current_date - years(10)
+  })  
+
+
+  output$full_plot4=renderPlot({
+
+      ggplot( ) +
+      geom_line(data = lake_data[[4]], aes(x = dates, y=level) ) +
+      geom_line(data = pred_lakes[[4]], aes(x = time, y=level), col="red") +
+      geom_line(data = lake_models_forecast[[4]], 
+        aes(x = time, y=level),col = "blue")+
+      geom_ribbon(data = pred_lakes[[4]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill= "red", alpha = 0.2)+
+      geom_ribbon(data = lake_models_forecast[[4]], 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96),fill ="blue", alpha = 0.2)+
+      ylim(min(lake_data[[4]]$level ), thresh_100[1] +1 )+      
+      theme_minimal() + theme(text=element_text(size=21)) +
+      xlab("Date")+
+      ylab("Lake level (ft) ") +
+      xlim(low_limx4$limx4, current_date+8)+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
+
+   } )
+
+
 
 
 

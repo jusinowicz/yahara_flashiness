@@ -83,8 +83,12 @@ model_form [[4]] = "level ~
 #			10% = 258.17 = 847.01 ft
 #			100% = 258.40 = 847.77 ft.
 
-thresh_10 = c((851.84 - 839.96), (847.01 - 839.96))
-thresh_100 = c((852.43 - 839.86), (847.77 - 839.86))
+# thresh_10 = c((851.84 - 839.96), (847.01 - 839.96))
+# thresh_100 = c((852.43 - 839.86), (847.77 - 839.86))
+
+thresh_10 = c((851.84 ), (847.01 ))
+thresh_100 = c((852.43 ), (847.77))
+
 
 #To color code max lake level, according to flood threat level
 flash_col= c("aqua", "orange", "red")
