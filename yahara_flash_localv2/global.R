@@ -276,7 +276,7 @@ updateModel = function (lake_data, model_form){
   #run the code to fit the models. This is time consuming! 
   #The standard I have chosen to employ is to name stored fitted models 
   #with suffix ".var"
-  model_files = list.files("./")
+  model_files = list.files("./data/")
   model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
 
   #Test if thefile exists
@@ -287,7 +287,7 @@ updateModel = function (lake_data, model_form){
     n_files = length(model_files)
     #Loop and load the files 
     for ( n in 1:n_files ){ 
-      load(paste(model_files[n]) )
+      load(paste("./data/", model_files[n],sep="") )
     }
   
   }else{ 
@@ -330,7 +330,7 @@ updateModel = function (lake_data, model_form){
     }
 
     #save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
-    save(file = "lakeGAMsfull.var", lake_models) #Too big? :(
+    save(file = "./data/lakeGAMsfull.var", lake_models) #Too big? :(
 
 
   }
@@ -345,7 +345,7 @@ updateModel = function (lake_data, model_form){
 updateGAM_pred = function(lake_data, fut_precip){
 
     #Where the fitted model coefficients and Lp matrix live
-    model_files = list.files("./")
+    model_files = list.files("./data/")
     model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
 
     #Which are the model files? 
@@ -353,7 +353,7 @@ updateGAM_pred = function(lake_data, fut_precip){
     n_files = length(model_files)
     #Loop and load the files 
     for ( n in 1:n_files ){ 
-      load(paste(model_files[n]) )
+      load(paste("./data/", model_files[n],sep="")  )
     }
 
     predictFlashGAM(lake_data, fut_precip,lake_models)

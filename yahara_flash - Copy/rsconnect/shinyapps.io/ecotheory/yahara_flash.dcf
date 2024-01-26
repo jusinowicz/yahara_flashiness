@@ -1,0 +1,10 @@
+name: yahara_flash
+title:
+username: ecotheory
+account: ecotheory
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10546008
+bundleId: 8153073
+url: https://ecotheory.shinyapps.io/yahara_flash/
+version: 1

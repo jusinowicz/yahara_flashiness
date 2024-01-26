@@ -393,7 +393,7 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
 
 	#This will keep adding the newest forecasts to the same file to keep
 	#a rolling table of past predictions.
-	tbl_file = paste("gam_",n,"_forecast.csv", sep="")
+	tbl_file = paste("./data/gam_",n,"_forecast.csv", sep="")
 	if(file.exists(tbl_file)){
 		tbl_tmp = read.csv(tbl_file)
 		tbl_tmp$time = as.Date(ymd(tbl_tmp$time)) 
@@ -415,7 +415,7 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
   
     }
 
-    save(file = "gams_forecast.var", lake_models_forecast )
+    save(file = "./data/gams_forecast.var", lake_models_forecast )
     
 }
 
@@ -670,7 +670,7 @@ fit_predDNN = function(lake_data_lstm,fut_precip_scaled, lagsp,
 
 	}
 
-	save(file = "todays_DNNforecast.var", lake_forecast_dnn )
+	save(file = "./data/todays_DNNforecast.var", lake_forecast_dnn )
 
 }
 
@@ -889,7 +889,7 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 
 	}
 
-	save(file = "todays_CNNLSTMforecast.var", lake_forecast_cnnlstm )
+	save(file = "./data/todays_CNNLSTMforecast.var", lake_forecast_cnnlstm )
 
 }
 
@@ -1058,7 +1058,7 @@ fit_predLSTM = function(lake_data_lstm, lagsp ){
 
 	}
 
-	save(file = "todays_forecast.var", lake_models_forecast )
+	save(file = "./data/todays_forecast.var", lake_models_forecast )
 
 }
 

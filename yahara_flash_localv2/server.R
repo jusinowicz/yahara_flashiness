@@ -156,7 +156,7 @@ server <- function(input, output) {
   for(n in 1:n_lakes){
 
     #This is the github URL for the data. 
-    giturl = paste("gam_",n,"_forecast.csv", sep="")
+    giturl = paste("./data/gam_",n,"_forecast.csv", sep="")
     pred_lakes[[n]] = tail(read.csv((giturl)),lagsp )
     pred_lakes[[n]]$time = as.Date(ymd(pred_lakes[[n]]$time)) 
     # print(lagsp)
@@ -185,7 +185,7 @@ server <- function(input, output) {
   
 
   for(n in 1:n_lakes){
-    giturl = paste("./lakemodel_",n,"_",m_use_type,"forecast.csv",sep ="")
+    giturl = paste("./data/lakemodel_",n,"_",m_use_type,"forecast.csv",sep ="")
     lake_models_forecast[[n]] = tail(read.csv((giturl)),lagsp)  
 
     #Because the forecasts are generated as a kind of posterior 
