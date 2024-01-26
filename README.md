@@ -1,6 +1,5 @@
 The goal of this repository is to run a shiny app server which outputs predictions of the lake level for lakes
-in the Yahara Watershed in Southern Wisconsin. At the moment it is only implemented for lakes Mendota and 
-Monona, which border Madison, WI. 
+in the Yahara Watershed in Southern Wisconsin. It is currently implemented for the main lakes in the chain: Mendota, Monona, Waubesa, and Kegonsa.
 
 ##yahara_flash
 The code to run the shiny app is in the folder yahara_flash. The app itself is currently hosted at
@@ -8,34 +7,35 @@ https://ecotheory.shinyapps.io/yahara_flash/. The app mostly loads data and plot
 
 The lake level data is retrieved from the USGS server 
 https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=
-Site keys: site_keys = c("05428000", "05429000")
+Site keys: site_keys = c("05428000", "05429000","425715089164700",  "05429485")
 
 Historical rain data comes from NASA with the R library nasapower. 
 Coordinates: c(43.0930, -89.3727)
 
 The precipitation forecast data uses the R library openmeteo. Same coordinates.
 
+There are two different modeling schemes used to make forecast: General Additive Mixed Models (GAMM) and Recurrent Neural Networks (RNN). 
+
 The fitted GAMMs are stored in the variable "lakeGAMsfull.var" and the GAMM forecast is made
 on the shiny server. 
 
-The fitted LSTMs are not stored on the shiny server (see below). The forecasts made by these models
+The fitted RNNs are not stored on the shiny server (see below). The forecasts made by these models
 are loaded from a file stored here in this github repository at: 
 "https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_local/lakemodel_",n,"_forecast.csv"
-where n is 1 for Mendota and 2 for Monona. 
+where n corresponds to the lakes in N to S order (Mendota, Monona, Waubesa, Kegonsa). 
 
-#yahara_flash_local
+#yahara_flash_localv2
 There is a second version of the app in the folder yahara_flash_local which performs the actual updates 
-of the forecasts. The ML model, which is currently built as a Long Short Term Memory (LSTM) Recurring
-Neural Net (RNN), can take 10-15 minutes to run and so it does not make sense to host it on the shiny 
+of the forecasts. The ML model, which is currently built with both Convolutional Neural Neworks (CNN) and Long Short Term Memory (LSTM) networks, can take 10-15 minutes to run and so it does not make sense to host it on the shiny 
 server itself. The models are run locally on another server, and then both of the LSTMs and the forecasts
 are updated here. 
 
-The LSTMs are stored in the folder LSTM.
+The fitted RNNs are stored in their respective folders.
 
 The forecasts are in lakemodel_n_forecast.csv, where n has the same lake indexing as above.
 
 #data
-This is where the historical data sets get stored.
+This is where the historical and forecasted data sets get stored.
 
 #flashines2016
 This is the original code that matches the publication Usinowicz et al. 2016. 
