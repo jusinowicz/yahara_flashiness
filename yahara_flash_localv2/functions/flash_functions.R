@@ -719,7 +719,7 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 #CNN plus LSTM
 	build_and_compile_cnnlstm = function() {
 		model = keras_model_sequential() %>%
-				layer_conv_1d(
+			layer_conv_1d(
 					filters=64, 
 					kernel_size=4, 
 					padding = "causal", 

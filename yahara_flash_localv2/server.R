@@ -84,8 +84,8 @@ server <- function(input, output) {
     years.tmp = data.frame( Year=format(lake_dates[[n]], "%Y") )
     months.tmp = data.frame(Month = format(lake_dates[[n]], "%m") )
 
-    #Include the years and the months as columns
-    #lake_data[[n]] = cbind( years.tmp, months.tmp, lake_data[[n]] )
+    # #Include the years and the months as columns
+    # lake_data[[n]] = cbind(lake_data[[n]],years.tmp, months.tmp )
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
@@ -132,10 +132,27 @@ server <- function(input, output) {
                           lake_data_all[1+l_others])
 
     #Now feed it to the function to add the lags
-     lake_data_lstm[[n]] = make.flashiness.object(
+    lake_data_lstm[[n]] = make.flashiness.object(
       data.frame(level = lake_data_temp[[n]]$level), as.data.frame(lake_data_temp[[n]][,3:(n_lakes+1)]),
       matrix(lagsp-1,1,(n_lakes-1) ), 
       auto=F, orders=lagsp-1)
+
+
+    # One-hot encode the years and months:      
+    years.tmp = data.frame( Year= as.integer(format(lake_data_all$time, "%Y") ))
+    months.tmp = data.frame(Month = as.integer(format(lake_data_all$time, "%m") ))
+    
+    #Get the year alphabet
+    yrss = unique(years.tmp$Year)
+    nyrs = length(yrss)
+    myrs = min(yrss)
+
+    #Use this function from Keras
+    month_encoded =  to_categorical(months.tmp$Month-1, num_classes = 12)
+    year_encoded = to_categorical(years.tmp$Year-myrs, num_classes = nyrs)
+
+    lake_data_lstm[[n]] = cbind(lake_data_lstm[[n]],month_encoded, year_encoded )
+
 
   }
 
