@@ -347,6 +347,5 @@ for(n in 1:n_lakes){
 
 dev.off()
 
-
 #MeanDecreaseGini
 importance(lake_models[[n]])[order(importance(lake_models[[n]]),decreasing = T),]
