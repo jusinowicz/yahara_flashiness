@@ -41,6 +41,7 @@ current_date = ymd( Sys.Date() )
 #Where the lake stage and rain data live: 
 lake_data = vector("list", n_lakes) #GAM formatted
 lake_data_temp = vector("list", n_lakes) #LSTM formatted
+lake_data_tempG = vector("list", n_lakes) #LSTM formatted
 lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 
 #Forecasts:
@@ -73,6 +74,58 @@ model_form [[3]] = "level ~
 model_form [[4]] = "level ~ 
   s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
   s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+#Versions from the RF fitting
+model_form [[1]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(mon,bs=\"cr\",k=6)+s(mon1,bs=\"cr\",k=6)+
+  s(mon2,bs=\"cr\",k=6)+s(mon3,bs=\"cr\",k=6)+
+  s(mon4,bs=\"cr\",k=6)+s(mon5,bs=\"cr\",k=6)+
+  s(wau,bs=\"cr\",k=6)+s(wau1,bs=\"cr\",k=6)+
+  s(wau2,bs=\"cr\",k=6)+
+  s(keg,bs=\"cr\",k=6)+s(keg1,bs=\"cr\",k=6)+
+  s(keg2,bs=\"cr\",k=6)+s(keg3,bs=\"cr\",k=6)+
+  s(keg4,bs=\"cr\",k=6)+s(keg5,bs=\"cr\",k=6)+
+  s(keg6,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[2]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(men,bs=\"cr\",k=6)+s(men1,bs=\"cr\",k=6)+
+  s(men2,bs=\"cr\",k=6)+s(men3,bs=\"cr\",k=6)+
+  s(men4,bs=\"cr\",k=6)+
+  s(wau,bs=\"cr\",k=6)+s(wau1,bs=\"cr\",k=6)+
+  s(wau2,bs=\"cr\",k=6)+s(wau3,bs=\"cr\",k=6)+
+  s(wau4,bs=\"cr\",k=6)+s(wau5,bs=\"cr\",k=6)+
+  s(keg,bs=\"cr\",k=6)+s(keg1,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[3]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(men,bs=\"cr\",k=6)+s(men1,bs=\"cr\",k=6)+
+  s(men2,bs=\"cr\",k=6)+s(men3,bs=\"cr\",k=6)+
+  s(men4,bs=\"cr\",k=6)+s(men5,bs=\"cr\",k=6)+
+  s(men6,bs=\"cr\",k=6)+
+  s(mon,bs=\"cr\",k=6)+s(mon1,bs=\"cr\",k=6)+
+  s(mon2,bs=\"cr\",k=6)+
+  s(wau,bs=\"cr\",k=6)+s(wau1,bs=\"cr\",k=6)+
+  s(wau2,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[4]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(men,bs=\"cr\",k=6)+s(men1,bs=\"cr\",k=6)+
+  s(men2,bs=\"cr\",k=6)+s(men3,bs=\"cr\",k=6)+
+  s(men4,bs=\"cr\",k=6)+
+  s(mon,bs=\"cr\",k=6)+s(mon1,bs=\"cr\",k=6)+
+  s(mon2,bs=\"cr\",k=6)+s(mon3,bs=\"cr\",k=6)+
+  s(mon4,bs=\"cr\",k=6)+s(mon5,bs=\"cr\",k=6)+
+  s(keg,bs=\"cr\",k=6)+s(keg1,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 #Flooding thresholds from Usinowicz et al. 2016

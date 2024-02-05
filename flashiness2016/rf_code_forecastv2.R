@@ -180,32 +180,38 @@ for (n in 1: n_lakes){
     #wish to forecast.
     # scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm = T), sqrt(var(lake.tmp$level,na.rm = T)) )
     # scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
-    scale_ll[[n]] = c ( mean(lake_data[[n]]$level,na.rm = T), sqrt(var(lake_data[[n]]$level,na.rm = T)) )
+    scale_ll[[n]] = c ( mean( lake.tmp$level,na.rm = T), sqrt(var( lake.tmp$level,na.rm = T)) )
     scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
 
     lake_data_temp[[n]] = data.frame(
-      time = lake_data[[n]]$time,
-      level= (lake_data[[n]]$level - scale_ll[[n]] [1])/scale_ll[[n]] [2])
+      time = lake.tmp$time ,
+      level= (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2],
+      rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] )
     
     fut_precip_scaled = fut_precip
     fut_precip_scaled$rn = (fut_precip$rn- scale_rn[1])/scale_rn[2]
 
+
 }
 
-#Build out the final data sets with lags of other lake levels
-#Join the lake and rain data to match up dates
-lake_data_all = lake_data_temp[[1]]
-for (n in 2:n_lakes){
-	lake_data_all = lake_data_all %>%
-	                   inner_join ( lake_data_temp[[n]],by = "time")
-}
+ #Build out the final data sets with lags of other lake levels
+  #Join the lake and rain data to match up dates
+  lake_data_all = lake_data_temp[[1]][,1:2]
+  lake_data_allG = lake_data[[1]]
 
-#names
-colnames(lake_data_all) = c("time",lake_pre)
+  for (n in 2:n_lakes){
+    lake_data_all = lake_data_all %>%
+                        inner_join ( lake_data_temp[[n]][,1:2],by = "time")
+    # lake_data_allG = lake_data_allG %>%
+    #                     inner_join ( lake_data[[n]],by = "time")
+  }
 
-#add precip 
-lake_data_all = lake_data_all %>%
-                   inner_join ( daily_precip[[n]],by = "time")
+  #names
+  colnames(lake_data_all) = c("time", lake_pre)
+ 
+  #Add the rain
+  lake_data_all = lake_data_all %>%
+                        inner_join ( lake_data_temp[[n]][,c(1,3)],by = "time")
 
 #Now make the data sets for each lake, with lags of all lakes
 for (n in 1:n_lakes){
@@ -215,14 +221,14 @@ for (n in 1:n_lakes){
     #Make the lake specific data frame 
     lake_data_temp[[n]] = data.frame(lake_data_all$time, 
                           level = lake_data_all[,(n+1)],
-                          lake_data_all[1+l_others])
+                          lake_data_all[1+l_others],
+                          rn = lake_data_all$rn)
 
     #Now feed it to the function to add the lags
     lake_data_lstm[[n]] = make.flashiness.object(
-      data.frame(level = lake_data_temp[[n]]$level), as.data.frame(lake_data_temp[[n]][,3:(n_lakes+1)]),
-      matrix(lagsp-1,1,(n_lakes-1) ), 
+      data.frame(level = lake_data_temp[[n]]$level), as.data.frame(lake_data_temp[[n]][,3:(n_lakes+2)]),
+      matrix(lagsp-1,1,(n_lakes) ), 
       auto=F, orders=lagsp-1)
-
 
     # One-hot encode the years and months:      
     years.tmp = data.frame( Year= as.integer(format(lake_data_all$time, "%Y") ))
