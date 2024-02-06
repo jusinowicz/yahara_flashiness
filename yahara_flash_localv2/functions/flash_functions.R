@@ -272,13 +272,9 @@ fitGAM_ar = function( lake_data, model_form){
 		lake_new_use = ar_mod$resid
 
 		# New time series after removing NAs in the rain
-		rn_new=as.matrix(lake_data[[n]]$rn[!is.na(lake_data[[n]][,"rn",drop=T])])
-		lake_new_use = as.matrix(lake_new_use[!is.na(lake_data[[n]][,"rn",drop=T])])
-		colnames(rn_new) = "rn"
-		colnames(lake_new_use) = "level"
-
-		#Combine all of the data, add the lagged data, and turn into ts
-		lake_r = make.flashiness.object( lake_new_use , rn_new, lags)
+		lake_r = lake_data[[n]]
+		lake_r$level = lake_new_use #Replace lake level with residuals
+		lake_r = lake_r[!is.na(lake_r[,"rn",drop=T]),]
 
 		# The best-fit GAMs were determined in Usinowicz et al. 2016. 
 		# Those are what are fit here.

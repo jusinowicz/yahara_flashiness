@@ -25,7 +25,7 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 nasa_pars = c("PRECTOTCORR")
 
 #Lake prefixes
-lake_pre = c("men","mon","keg","wau")
+lake_pre = c("men","mon","wau","keg")
 #Gauge heights
 g_h = c(839.96, 839.86, 840.01, 839.91)
 
@@ -112,8 +112,8 @@ model_form [[3]] = "level ~
   s(men6,bs=\"cr\",k=6)+
   s(mon,bs=\"cr\",k=6)+s(mon1,bs=\"cr\",k=6)+
   s(mon2,bs=\"cr\",k=6)+
-  s(wau,bs=\"cr\",k=6)+s(wau1,bs=\"cr\",k=6)+
-  s(wau2,bs=\"cr\",k=6)+
+  s(keg,bs=\"cr\",k=6)+s(keg1,bs=\"cr\",k=6)+
+  s(keg2,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 model_form [[4]] = "level ~ 
@@ -121,11 +121,8 @@ model_form [[4]] = "level ~
   s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
   s(men,bs=\"cr\",k=6)+s(men1,bs=\"cr\",k=6)+
   s(men2,bs=\"cr\",k=6)+s(men3,bs=\"cr\",k=6)+
-  s(men4,bs=\"cr\",k=6)+
-  s(mon,bs=\"cr\",k=6)+s(mon1,bs=\"cr\",k=6)+
-  s(mon2,bs=\"cr\",k=6)+s(mon3,bs=\"cr\",k=6)+
-  s(mon4,bs=\"cr\",k=6)+s(mon5,bs=\"cr\",k=6)+
-  s(keg,bs=\"cr\",k=6)+s(keg1,bs=\"cr\",k=6)+
+  s(wau,bs=\"cr\",k=6)+s(wau1,bs=\"cr\",k=6)+
+  s(wau3,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
 #Flooding thresholds from Usinowicz et al. 2016
