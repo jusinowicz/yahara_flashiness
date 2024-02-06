@@ -343,9 +343,12 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
 
       #The start of the new data set for prediction with 
       #the first new day
+      all_cols = dim(lt)[2]
+      rn_strt = min(ar_rain)-1
       lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
+      	lt[l_arl,(l_arl+3):(rn_strt-1)],
         fut_precip[1,2],
-        lt[l_arl,(l_arl+3):(l_arl+2+l_arr) ] ))
+        lt[l_arl,rn_strt:(all_cols-1) ] ) )
       colnames(lt_tmp) = colnames(lt)
       lt_new = rbind( lt,lt_tmp) 
       
@@ -374,9 +377,10 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
         if (t < n_days){ 
           lt_use$level = pr_tmp[t,3] #Replace NA with prediction
           ld_use = rbind(ld_use, lt_use)
-          lt_use = as.data.frame(c(ntime+t, NA, lt_use[1,2:(l_arl+1)],
-          fut_precip[t+1,2],
-          lt_use[1,(l_arl+3):(l_arl+2+l_arr) ] ))
+          lt_use = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
+					      	lt[l_arl,(l_arl+3):(rn_strt-1)],
+					        fut_precip[1,2],
+					        lt[l_arl,rn_strt:(all_cols-1) ] ) )
 
           colnames(lt_use) = colnames(lt)
         }else{   }

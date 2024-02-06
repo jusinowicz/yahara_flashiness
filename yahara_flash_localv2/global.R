@@ -44,6 +44,9 @@ lake_data_temp = vector("list", n_lakes) #LSTM formatted
 lake_data_tempG = vector("list", n_lakes) #LSTM formatted
 lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 
+#Models:
+lake_models = vector("list", n_lakes) 
+
 #Forecasts:
 lake_models_forecast = vector("list", n_lakes) 
 lake_forecast_dnn = vector("list", n_lakes) #DNN 
@@ -337,7 +340,8 @@ updateModel = function (lake_data, model_form){
     n_files = length(model_files)
     #Loop and load the files 
     for ( n in 1:n_files ){ 
-      load(paste("./data/", model_files[n],sep="") )
+      x_tmp = load(paste("./data/", model_files[n],sep="") )
+      lake_models[[n]] = get(x_tmp)
     }
   
   }else{ 
@@ -382,6 +386,11 @@ updateModel = function (lake_data, model_form){
     #save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
     save(file = "./data/lakeGAMsfull.var", lake_models) #Too big? :(
 
+    for(n in 1:n_lakes) {
+      fsave = paste("./data/lakeGAMsfull",n,".var", sep="")
+      model_tmp = lake_models[[n]]
+      save(file = fsave, model_tmp ) #Too big? :(
+    }
 
   }
 
@@ -403,10 +412,11 @@ updateGAM_pred = function(lake_data, fut_precip){
     n_files = length(model_files)
     #Loop and load the files 
     for ( n in 1:n_files ){ 
-      load(paste("./data/", model_files[n],sep="")  )
+      x_tmp = load(paste("./data/", model_files[n],sep="") )
+      lake_models[[n]] = get(x_tmp)
     }
 
-    predictFlashGAM(lake_data, fut_precip,lake_models)
+    predictFlashGAM(lake_data, fut_precip, lake_models)
 
 }
 

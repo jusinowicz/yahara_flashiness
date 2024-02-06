@@ -81,6 +81,7 @@ server <- function(input, output) {
     lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level), 
       data.frame(rn=rn.tmp$rn), lags)
 
+    lake_data[[n]]$time = lake_dates[[n]]
     years.tmp = data.frame( Year=format(lake_dates[[n]], "%Y") )
     months.tmp = data.frame(Month = format(lake_dates[[n]], "%m") )
 
@@ -102,14 +103,14 @@ server <- function(input, output) {
     fut_precip_scaled = fut_precip
     fut_precip_scaled$rn = (fut_precip$rn- scale_rn[1])/scale_rn[2]
 
-    incProgress((n+2)/4, detail="Final melding")
+    #incProgress((n+2)/4, detail="Final melding")
 
   }
 
   #Build out the final data sets with lags of other lake levels
   #Join the lake and rain data to match up dates
   lake_data_all = lake_data_temp[[1]][,1:2]
-  lake_data_allG = lake_data[[1]][,c(1,2)]
+  lake_data_allG = lake_data[[1]][,1:2]
 
   for (n in 2:n_lakes){
     lake_data_all = lake_data_all %>%
@@ -134,6 +135,9 @@ server <- function(input, output) {
     l_others = 1:n_lakes
     l_others = l_others[-n]
 
+    #Keep the dates
+    lake_dates[[n]] = lake_data_allG$time 
+
     #Make the lake specific data frame 
     lake_data_temp[[n]] = data.frame(lake_data_all$time, 
                           level = lake_data_all[,(n+1)],
@@ -155,6 +159,8 @@ server <- function(input, output) {
       data.frame(level = lake_data_tempG[[n]]$level), as.data.frame(lake_data_tempG[[n]][,3:(n_lakes+2)]),
       matrix(lagsp-1,1,(n_lakes) ), 
       auto=F, orders=lagsp-1)
+
+   # lake_data[[n]]$time = lake_dates[[n]]
 
     # One-hot encode the years and months:      
     years.tmp = data.frame( Year= as.integer(format(lake_data_all$time, "%Y") ))
