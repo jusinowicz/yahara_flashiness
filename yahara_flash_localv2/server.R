@@ -127,8 +127,11 @@ server <- function(input, output) {
   lake_data_all = lake_data_all %>%
                         inner_join ( lake_data_temp[[n]][,c(1,3)],by = "time")
 
+  ld_tmp = data.frame(lake_data[[n]]$time, lake_data[[n]]$rn) 
+  colnames(ld_tmp) = c("time","rn")
+
   lake_data_allG = lake_data_allG %>%
-                        inner_join ( lake_data[[n]][,c(1,7)],by = "time")
+                        inner_join ( ld_tmp, by = "time")
 
   #Now make the data sets for each lake, with lags of all lakes
   for (n in 1:n_lakes){
@@ -258,7 +261,7 @@ server <- function(input, output) {
     lake_data[[n]]$dates = lake_dates[[n]] 
   }
 
-  ##############################################################
+  ########### ###################################################
   #Mendota
   ##############################################################
   #Max lake level
