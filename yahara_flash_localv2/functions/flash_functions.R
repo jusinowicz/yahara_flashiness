@@ -823,70 +823,124 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 	  	epochs = 20,
 			callbacks = list(cnnlstm_callback,callback_tensorboard(cnnlstm_log )) # Pass callback to training
 		)
+	}
 
-			##########################################################################
-			#Forecasting
-			##########################################################################
-		 	ot = dim(lake_data_lstm[[n]])[[1]]
-		 	#Get the last section of data table for lags
-			lt_tmp = as.matrix(tail(as.data.frame(ld_tmp),100))
- 			lt = array( lt_tmp, 
-											dim = c(1, dim(lt_tmp)[1], dim(lt_tmp)[2] ) )
+	##########################################################################
+	#Forecasting
+	##########################################################################
+	#Temporarily store predicted lake level
+	pr_tmp_all = vector("list", n_lakes)
+	lt_tmp1_all = vector("list", n_lakes) 
+	lt_tmp_all = vector("list", n_lakes)
+	lt_all = vector("list", n_lakes)
+ 	
+ 	#Original ending time:
+ 	ot = dim(lake_data_lstm[[n]])[[1]]
 
-      #Temporarily store predicted lake level
-      pr_tmp = matrix(0, n_days, 3)
-      pr_tmp[,1] = fut_precip_scaled$rn
-      colnames(pr_tmp) = c("rn", "level", "se")
+	for(n in 1:n_lakes) {
 
-      cur_pred = 100 #Start an index for predicted value
+		#Chop off time 
+		ld_tmp = lake_data_lstm[[n]][,-1]
 
-      for (t in 1:n_days){
+		#Chop off the first lagged rows with NAs:
+		ld_tmp = ld_tmp[-(1:(lags+1)), ]
+		ntime_full = dim(ld_tmp)[1]
 
+		#Need to convert ld_tmp to a matrix
+		ld_tmp = as.matrix(ld_tmp)
+
+	 	#Get the last section of data table for lags
+		lt_tmp1_all[[n]] = as.matrix(tail(as.data.frame(ld_tmp),100))
+		lt_tmp_all[[n]] = lt_tmp1_all[[n]][1:99, ]	
+		lt_all[[n]] = array( lt_tmp_all[[n]], 
+											dim = c(1, dim(lt_tmp_all[[n]])[1], 
+												dim(lt_tmp_all[[n]])[2] ) )
+
+    #Temporarily store predicted lake level
+    pr_tmp_all[[n]] = matrix(0, n_days+1, 3)
+    pr_tmp_all[[n]][1,1] = lt_tmp1_all[[n]][100,colnames(lt_tmp_all[[n]])=="rn"] 
+    pr_tmp_all[[n]][2:(n_days+1),1] = fut_precip_scaled$rn
+    colnames(pr_tmp_all[[n]]) = c("rn", "level", "se")
+	}
+      
+  cur_pred = 99 #Start an index for predicted value
+
+  #Now make the forecasts:
+  for (t in 1:(n_days+1)){
+  	#First make each lake's one-day ahead forecast
+  	for (n in 1:n_lakes){
 				for ( p in 1:nits){
 					lake_forecast_cnnlstm[[n]][t,p] = 
-							predict(lake_models_cnnlstm[[n]], lt)[cur_pred] 
+							predict(lake_models_cnnlstm[[n]], lt_all[[n]])[cur_pred] 
 				}
 
-        pr_tmp[t,2] = mean(lake_forecast_cnnlstm[[n]][t,])
-        pr_tmp[t,3] = sqrt(var(lake_forecast_cnnlstm[[n]][t,] ))
+        pr_tmp_all[[n]][t,2] = mean(lake_forecast_cnnlstm[[n]][t,])
+        pr_tmp_all[[n]][t,3] = sqrt(var(lake_forecast_cnnlstm[[n]][t,] ))
+   	}
 
-        #Now update lt with the forecasted data
-        if (t < n_days){ 
-        	lt_add = t( c(pr_tmp[t,2],lt[1,cur_pred,1:(lagsp-1)],
-          pr_tmp[t,1],
-          lt[1,cur_pred,(lagsp+1):(dim(ld_tmp)[2]-1) ] ) )
-          rownames(lt_add) = (ot+t)
-          lt_new = rbind(lt[1,,], lt_add)
-          lt = array( lt_new, 
-											dim = c(1, dim(lt_new)[1], dim(lt_new)[2] ) )
+    #Now update lt_all with the forecasted data
+    if (t < (n_days+1)){ 
+    	for(n in 1:n_lakes) { 
+    		#Indexes of other lakes
+    		other_lakes = 1:n_lakes
+    		other_lakes = other_lakes[-n]
 
-          cur_pred = cur_pred+1
-        }else{   }
-      
-      }
+    		#Create the next time step using current predictions
+    		#First add current lake level and lags
+    		lt_add = c(pr_tmp_all[[n]][t,2],
+    									lt_all[[n]][1,cur_pred,1:(lagsp-1)] )
+    		
+    		#Next, cycle through other lakes
+    		for (q in 1:(n_lakes-1)){
+    			lt_add = c(lt_add,
+    								 pr_tmp_all[[other_lakes[q]]][t,2], 
+    								 lt_all[[other_lakes[q]]][1,cur_pred,1:(lagsp-1)] )
+    		}
 
-			#This will keep adding the newest forecasts to the same file to keep
-			#a rolling table of past predictions.
-			tbl_file = paste("lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
-			if(file.exists(tbl_file)){
-				tbl_tmp = read.csv(tbl_file)
-				tbl_row = dim(tbl_tmp)[1]
-				tbl_col = dim(tbl_tmp)[2]
-				#Add a new row
-				tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
-				#Overwrite the existing data in the window 
-				#with the new predictions
-				tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
-				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
-			
-			}else {
-				#If the file does not already exist
-				tbl_tmp = lake_forecast_cnnlstm[[n]]
-				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+    		#Add the rain
+    		lt_add = c(lt_add,
+    							 pr_tmp_all[[n]][t,1], 
+    							 lt_all[[n]][1,cur_pred,(lagsp*4+1):(lagsp*4+(lagsp-1)) ] )
+
+    		#Add the month and year encodings: 
+    		lt_add = c(lt_add,
+    								lt_all[[n]][1,cur_pred,(lagsp*4+(lagsp+1)):(dim(ld_tmp)[2]) ]
+    								)
+
+    		#Make it a matrix and add the current time index
+    		lt_add = t(lt_add)
+    		rownames(lt_add) = (ot+t)
+
+    		#Add this new row to lt
+    		lt_new = rbind(lt_all[[n]][1,,],lt_add)
+				lt_all[[n]] = array( lt_new, 
+									dim = c(1, dim(lt_new)[1], dim(lt_new)[2] ) )
 			}
+      cur_pred = cur_pred+1
+    }else{   }
+  
+	}
 
-
-
+		#This will keep adding the newest forecasts to the same file to keep
+		#a rolling table of past predictions.
+	for(n in 1:n_lakes){
+		tbl_file = paste("lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
+		if(file.exists(tbl_file)){
+			tbl_tmp = read.csv(tbl_file)
+			tbl_row = dim(tbl_tmp)[1]
+			tbl_col = dim(tbl_tmp)[2]
+			#Add a new row
+			tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
+			#Overwrite the existing data in the window 
+			#with the new predictions
+			tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
+			write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+		
+		}else {
+			#If the file does not already exist
+			tbl_tmp = lake_forecast_cnnlstm[[n]]
+			write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+		}
 	}
 
 	save(file = "./data/todays_CNNLSTMforecast.var", lake_forecast_cnnlstm )
