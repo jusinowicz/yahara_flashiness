@@ -304,6 +304,13 @@ fitGAM_ar = function( lake_data, model_form){
 ###############################################################################
 
 predictFlashGAM = function(lake_data, fut_precip, lake_models){
+		#Temporary data sets
+		pr_tmp_all = vector("list", n_lakes)
+		lt_use_all = vector("list", n_lakes)
+		lt_use_save = vector("list", n_lakes)		
+		ld_use_all = vector("list", n_lakes)
+		lt_all = vector("list", n_lakes)
+		l_arl = matrix(0, n_lakes,1)
 
     #How many days are we forecasting? 
     n_days = dim(fut_precip)[1]
@@ -323,97 +330,126 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
       ar_lake = ar_lake[-1]
       ar_rain = grep("rn", (colnames(lake_data[[n]]))) 
       ar_rain = ar_rain[-1]
-      l_arl = length (ar_lake)
+      l_arl[n] = length (ar_lake)
       l_arr = length (ar_rain)
 
       #Which AR is larger? 
-      if(l_arl>l_arr){ lar = l_arl}else{lar = l_arr}
+      if(l_arl[n]>l_arr){ lar = l_arl[n]}else{lar = l_arr}
       
       #Get the last section of data table for lags
-      lt = tail(lake_data[[n]], l_arl)
+      lt_all[[n]] = tail(lake_data[[n]], l_arl[n])
       
       #Look for an NA in most recent rn, this happens
-      if(sum(is.na(lt$rn)) > 0){  
-        lt$rn[is.na(lt$rn)] = mean(lt$rn,na.rm=T)
+      if(sum(is.na(lt_all[[n]]$rn)) > 0){  
+        lt_all[[n]]$rn[is.na(lt_all[[n]]$rn)] = mean(lt_all[[n]]$rn,na.rm=T)
       }
-
-      #Version 3: An iterative prediction approach where
-      #the AR is predicted first, then the GAM, then the 
-      #two are added. 
 
       #The start of the new data set for prediction with 
       #the first new day
-      all_cols = dim(lt)[2]
+      all_cols = dim(lt_all[[n]])[2]
       rn_strt = min(ar_rain)-1
-      lt_tmp = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
-      	lt[l_arl,(l_arl+3):(rn_strt-1)],
+      lt_tmp = as.data.frame(c(ntime+1, NA, lt_all[[n]][l_arl[n],2:(l_arl[n]+1)],
+      	lt_all[[n]][l_arl[n],(l_arl[n]+3):(rn_strt-1)],
         fut_precip[1,2],
-        lt[l_arl,rn_strt:(all_cols-1) ] ) )
-      colnames(lt_tmp) = colnames(lt)
-      lt_new = rbind( lt,lt_tmp) 
+        lt_all[[n]][l_arl[n],rn_strt:(all_cols-1) ] ) )
+      colnames(lt_tmp) = colnames(lt_all[[n]])
+      lt_new = rbind( lt_all[[n]],lt_tmp) 
       
       #Initialize new data set
-      lt_use = lt_new[l_arl+1,]
-      ld_use = lake_data[[n]]
-      lt_save = NULL
+      lt_use_all[[n]] = lt_new[l_arl[n]+1,]
+      ld_use_all[[n]]  = lake_data[[n]] #For the AR prediction
+      lt_use_save[[n]] = lt_use_all[[n]] #Record with updated preds
 
       #Temporarily store predicted lake level and SE
-      pr_tmp = matrix(0, n_days, 4 )
-      pr_tmp[,1] = ntime+(1:n_days)
-      pr_tmp[,2] = fut_precip$rn
-      colnames(pr_tmp) = c("time", "rn", "level", "se")
-
-      for (t in 1:n_days){
-
-        pt = predict(lake_models[[n]]$gam, newdata=lt_use,se.fit=TRUE, type ="response")
-        ll_ar = ar(ld_use$level)
+      pr_tmp_all[[n]] = matrix(0, n_days, 4 )
+      pr_tmp_all[[n]][,1] = ntime+(1:n_days)
+      pr_tmp_all[[n]][,2] = fut_precip$rn
+      colnames(pr_tmp_all[[n]]) = c("time", "rn", "level", "se")
+		}
+        
+    #Now make the forecasts:
+   	#Version 3: An iterative prediction approach where
+    #the AR is predicted first, then the GAM, then the 
+    #two are added. 
+    for (t in 1:n_days){
+    	#First make each lake's one-day ahead forecast
+  		for (n in 1:n_lakes){
+        pt = predict(lake_models[[n]]$gam, newdata=lt_use_all[[n]] ,se.fit=TRUE, type ="response")
+        ll_ar = ar(ld_use_all[[n]]$level)
         ll_tmp1 = predict(ll_ar, n.ahead = 1, se.fit=TRUE)
 
-        pr_tmp[t,3] =pt$fit[1] + ll_tmp1$pred[1]
-        pr_tmp[t,4] = pt$se[1] + ll_tmp1$se[1]
+        pr_tmp_all[[n]][t,3] =pt$fit[1] + ll_tmp1$pred[1]
+        pr_tmp_all[[n]][t,4] = pt$se[1] + ll_tmp1$se[1]
 
-        #Now update the lags in lt_use with data for this day, 
-        #but don't do this for n_days
-        if (t < n_days){ 
-          lt_use$level = pr_tmp[t,3] #Replace NA with prediction
-          ld_use = rbind(ld_use, lt_use)
-          lt_use = as.data.frame(c(ntime+1, NA, lt[l_arl,2:(l_arl+1)],
-					      	lt[l_arl,(l_arl+3):(rn_strt-1)],
-					        fut_precip[1,2],
-					        lt[l_arl,rn_strt:(all_cols-1) ] ) )
-
-          colnames(lt_use) = colnames(lt)
-        }else{   }
-      
+				#Replace NA with prediction
+       	lt_use_save[[n]]$level[t] = pr_tmp_all[[n]][t,3] 
+	        
       }
 
+      #Now update the lags in lt_use with data for this day, 
+      #but don't do this for n_days
+      if (t < n_days){ 
+      	for(n in 1:n_lakes) {
+      		#Indexes of other lakes
+    			other_lakes = 1:n_lakes
+    			other_lakes = other_lakes[-n]
 
-  	pred_lakes[[n]]  = as.data.frame(pr_tmp)
-		pred_lakes[[n]]$time = fut_precip$time
-
-	#This will keep adding the newest forecasts to the same file to keep
-	#a rolling table of past predictions.
-	tbl_file = paste("./data/gam_",n,"_forecast.csv", sep="")
-	if(file.exists(tbl_file)){
-		tbl_tmp = read.csv(tbl_file)
-		tbl_tmp$time = as.Date(ymd(tbl_tmp$time)) 
-		tbl_row = dim(tbl_tmp)[1]
-		tbl_col = dim(tbl_tmp)[2]
-		#Add a new row
-		tbl_tmp = rbind(tbl_tmp, tbl_tmp[1,])
-		#Overwrite the existing data in the window 
-		#with the new predictions
-		tbl_tmp[( tbl_row-(n_days-2) ):(tbl_row+1),] = pred_lakes[[n]]
-		write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
-	
-	}else {
-		#If the file does not already exist
-		tbl_tmp = pred_lakes[[n]]
-		write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
-	}
-
+    			#Index of rain
+    			ind_rain = grep("rn", (colnames(lake_data[[n]]))) 
   
+      		#Create the next time step using current predictions
+    			#First add current lake level and lags
+
+	        ltu_tmp = c(ntime+1, NA, lt_use_save[[n]][t,2:(l_arl[n]+1)])
+
+        	#Next, cycle through other lakes
+    			for (q in 1:(n_lakes-1)){
+    			ltu_tmp = c(ltu_tmp, NA,
+    								 pr_tmp_all[[other_lakes[q]]][t,3], 
+    								 lt_use_save[[other_lakes[q]]][t,2:(l_arl[n])] )
+    			}
+
+    			#Add the rain
+    			ltu_tmp = c(ltu_tmp,
+    							 pr_tmp_all[[n]][(t+1),2], 
+    							 lt_use_save[[n]][t,ind_rain[c(- length(ind_rain) )] ] )
+
+    			lt_use_all[[n]] = as.data.frame(ltu_tmp)
+	        colnames(lt_use_all[[n]]) = colnames(lt_all[[n]])
+	        lt_use_save[[n]] = as.data.frame(rbind(lt_use_save[[n]], lt_use_all[[n]]) )
+	     
+	      }
+      }else{   }
+
+
     }
+
+
+    for (n in 1:n_lakes){
+			pred_lakes[[n]]  = as.data.frame(pr_tmp_all[[n]])
+			pred_lakes[[n]]$time = fut_precip$time
+
+			#This will keep adding the newest forecasts to the same file to keep
+			#a rolling table of past predictions.
+			tbl_file = paste("./data/gam_",n,"_forecast.csv", sep="")
+			if(file.exists(tbl_file)){
+				tbl_tmp = read.csv(tbl_file)
+				tbl_tmp$time = as.Date(ymd(tbl_tmp$time)) 
+				tbl_row = dim(tbl_tmp)[1]
+				tbl_col = dim(tbl_tmp)[2]
+				#Add a new row
+				tbl_tmp = rbind(tbl_tmp, tbl_tmp[1,])
+				#Overwrite the existing data in the window 
+				#with the new predictions
+				tbl_tmp[( tbl_row-(n_days-2) ):(tbl_row+1),] = pred_lakes[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			
+			}else {
+				#If the file does not already exist
+				tbl_tmp = pred_lakes[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			}
+		}
 
     save(file = "./data/gams_forecast.var", lake_models_forecast )
     
@@ -710,7 +746,7 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 	nits = 1
 	lake_forecast_cnnlstm = vector("list", n_lakes)
 	for (n in 1:n_lakes ){
-		lake_forecast_cnnlstm[[n]] = matrix(0,lagsp,nits)
+		lake_forecast_cnnlstm[[n]] = matrix(0,(lagsp+1),nits)
 	}
 
 	#Model definition: 
@@ -933,7 +969,7 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 			tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
 			#Overwrite the existing data in the window 
 			#with the new predictions
-			tbl_tmp[( tbl_row-(lagsp-2) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
+			tbl_tmp[( tbl_row-(lagsp-1) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
 			write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
 		
 		}else {
