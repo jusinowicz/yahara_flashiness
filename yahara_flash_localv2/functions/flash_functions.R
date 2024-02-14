@@ -960,7 +960,7 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 		#This will keep adding the newest forecasts to the same file to keep
 		#a rolling table of past predictions.
 	for(n in 1:n_lakes){
-		tbl_file = paste("lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
+		tbl_file = paste("./data/lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
 		if(file.exists(tbl_file)){
 			tbl_tmp = read.csv(tbl_file)
 			tbl_row = dim(tbl_tmp)[1]
