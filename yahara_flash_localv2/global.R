@@ -558,7 +558,7 @@ updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7 ){
  
   }else{ 
     #We have to fit the models.This is a wrapper for keras
-    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp ) 
+    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp,,epochs=20 ) 
   }
 
 }
