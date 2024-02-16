@@ -215,6 +215,12 @@ server <- function(input, output) {
   
   }
   })
+
+  #Add the readable dates back on for plotting
+  for (n in 1:n_lakes){
+    lake_data[[n]]$dates = lake_dates[[n]] 
+  }
+
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
@@ -234,10 +240,12 @@ server <- function(input, output) {
 
   #load(file = "todays_forecast.var")
   
-
   for(n in 1:n_lakes){
     giturl = paste("./data/lakemodel_",n,"_",m_use_type,"forecast.csv",sep ="")
-    lake_models_forecast[[n]] = tail(read.csv((giturl)),lagsp)  
+    lake_models_forecast[[n]] = tail(read.csv(giturl),lagsp+1)  
+
+    #Get the last date from the historical data. 
+    last_day = tail(lake_data[[n]],1)
 
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
@@ -246,20 +254,22 @@ server <- function(input, output) {
     lm_m = rowMeans(lm_tmp)
     lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
 
-    lake_models_forecast[[n]] = data.frame(time = fut_precip$time, 
+    lake_models_forecast[[n]] = data.frame(time = c(last_day$dates, fut_precip$time), 
               level = lm_m, se = lm_se )
+
+    #Align the last day of data with the prediciton using an extra
+    #scaling factor: 
+    sf = last_day$level/lake_models_forecast[[n]]$level[1]
+    lake_models_forecast[[n]]$level = lake_models_forecast[[n]]$level*sf
+    lake_models_forecast[[n]] = lake_models_forecast[[n]][c(-1),]
+
     print(lake_models_forecast[[n]])
 
-   }
+  }
 })
   ##############################################################
   #PART 3: Build out the UI
   ##############################################################
-
-  #Add the readable dates back on for plotting
-  for (n in 1:n_lakes){
-    lake_data[[n]]$dates = lake_dates[[n]] 
-  }
 
   ########### ###################################################
   #Mendota
