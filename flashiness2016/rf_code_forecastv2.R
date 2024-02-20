@@ -252,7 +252,6 @@ for (n in 1:n_lakes){
 
     lake_data_lstm[[n]] = cbind(lake_data_lstm[[n]],month_encoded, year_encoded )
 
-
 }
 
 ##############################################################
@@ -338,7 +337,7 @@ for(n in 1:n_lakes){
 	     col = "green")
 }
 
-fig.name = paste("varImpPlot2",".pdf",sep="")
+fig.name = paste("varImpPlot3",".pdf",sep="")
 pdf(file=fig.name, height=8, width=8, onefile=TRUE, family='Helvetica', pointsize=16)
 
 par(mfrow = c(2,2))
