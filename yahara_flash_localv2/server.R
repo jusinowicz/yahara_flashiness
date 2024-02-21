@@ -1,4 +1,4 @@
-server <- function(input, output) {
+server <- function(input, output, session) {
 
   withProgress(message = 'Retrieving data', value = 0, {
   ##############################################################
@@ -268,10 +268,10 @@ server <- function(input, output) {
   }
 })
   ##############################################################
-  #PART 3: Build out the UI
+  #PART 4: Build out the UI
   ##############################################################
 
-  ########### ###################################################
+  ##############################################################
   #Mendota
   ##############################################################
   #Max lake level
@@ -751,8 +751,24 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
    } )
 
 
+  ##############################################################
+  #Part 5: Create a simulated forecast and plot predictions
+  ##############################################################
+  #Initialize this for the user-input simulations.
+  updateMatrixInput(session, "new_fut_precip", value = 
+    matrix(fut_precip$rn, dimnames = list(c(as.character(fut_precip$time)), c("rn"))) )
 
+  nfp_scaled = fut_precip_scaled
 
+  # #Plot the user-inputted forecast that is to be simulated
+
+  output$sim_rain = renderPlot({ 
+    nfp = as.data.frame(input$new_fut_precip)
+    nfp$time = rownames(nfp)
+    #nfp$time = ymd(nfp$time)
+    ggplot( data = nfp, aes(x = time, y=rn ) ) +
+    geom_col()
+  })
 
 } ##Server function end
 

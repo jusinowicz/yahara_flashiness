@@ -1,5 +1,8 @@
 library(shiny)
 library(shinydashboard)
+library(shinyMatrix)
+library(rhandsontable)
+
 library(tidyverse)
 library(lubridate)
 library(curl)
@@ -52,6 +55,8 @@ lake_models_forecast = vector("list", n_lakes)
 lake_forecast_dnn = vector("list", n_lakes) #DNN 
 lake_forecast_lstm = vector("list", n_lakes) #LSTM 
 pred_lakes = vector("list", n_lakes)
+
+nfp = matrix(0,7,1,dimnames = list(c(as.character(1:7)), c("rn")) )
 
 #Max lags in rain and lake-level data
 lags = 10
@@ -133,7 +138,6 @@ model_form [[4]] = "level ~
 
 thresh_10 = c((851.84 ), (847.01 ))
 thresh_100 = c((852.43 ), (847.77))
-
 
 #To color code max lake level, according to flood threat level
 flash_col= c("aqua", "orange", "red")
