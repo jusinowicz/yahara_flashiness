@@ -416,7 +416,7 @@ updateGAM_pred = function(lake_data, fut_precip, output){
 
     if (output == FALSE){
       predictFlashGAM(lake_data, fut_precip, lake_models, output = output)
-    }else{ 
+    }else{
       return( predictFlashGAM(lake_data, fut_precip, lake_models, 
         output = output) )
     }

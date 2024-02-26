@@ -1,4 +1,4 @@
-server <- function(input, output) {
+server <- function(input, output, session) {
 
   withProgress(message = 'Retrieving data', value = 0, {
   ##############################################################
@@ -81,61 +81,112 @@ server <- function(input, output) {
     lake_data[[n]] = make.flashiness.object(data.frame(level= lake.tmp$level), 
       data.frame(rn=rn.tmp$rn), lags)
 
+    lake_data[[n]]$time = lake_dates[[n]]
     years.tmp = data.frame( Year=format(lake_dates[[n]], "%Y") )
     months.tmp = data.frame(Month = format(lake_dates[[n]], "%m") )
 
-    #Include the years and the months as columns
-    #lake_data[[n]] = cbind( years.tmp, months.tmp, lake_data[[n]] )
+    # #Include the years and the months as columns
+    # lake_data[[n]] = cbind(lake_data[[n]],years.tmp, months.tmp )
 
     #For the RNN. The lags are the number of days into the future we 
     #wish to forecast.
     # scale_ll[[n]] = c ( mean(lake.tmp$level,na.rm = T), sqrt(var(lake.tmp$level,na.rm = T)) )
     # scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
-    scale_ll[[n]] = c ( mean(lake_table[[n]]$level,na.rm = T), sqrt(var(lake_table[[n]]$level,na.rm = T)) )
+    scale_ll[[n]] = c ( mean( lake.tmp$level,na.rm = T), sqrt(var( lake.tmp$level,na.rm = T)) )
     scale_rn = c ( mean(rn.tmp$rn,na.rm = T), sqrt(var(rn.tmp$rn,na.rm = T)) )
 
     lake_data_temp[[n]] = data.frame(
-      time = lake_table[[n]]$time,
-      level= (lake_table[[n]]$level - scale_ll[[n]] [1])/scale_ll[[n]] [2])
+      time = lake.tmp$time ,
+      level= (lake.tmp$level - scale_ll[[n]] [1])/scale_ll[[n]] [2],
+      rn= (rn.tmp$rn - scale_rn[1])/scale_rn[2] )
     
     fut_precip_scaled = fut_precip
     fut_precip_scaled$rn = (fut_precip$rn- scale_rn[1])/scale_rn[2]
 
-    incProgress((n+2)/4, detail="Final melding")
+    #incProgress((n+2)/4, detail="Final melding")
 
   }
-
 
   #Build out the final data sets with lags of other lake levels
   #Join the lake and rain data to match up dates
-  lake_data_all = lake_data_temp[[1]]
+  lake_data_all = lake_data_temp[[1]][,1:2]
+  lake_data_allG = lake_data[[1]][,1:2]
+
   for (n in 2:n_lakes){
     lake_data_all = lake_data_all %>%
-                        inner_join ( lake_data_temp[[n]],by = "time")
+                        inner_join ( lake_data_temp[[n]][,1:2],by = "time")
+    lake_data_allG = lake_data_allG %>%
+                        inner_join ( lake_data[[n]][,1:2],by = "time")
   }
 
   #names
-  colnames(lake_data_all) = c("time",lake_pre)
+  colnames(lake_data_all) = c("time", lake_pre)
+  colnames(lake_data_allG) = c("time", lake_pre)
   
-  #add precip 
+  #Add the rain
   lake_data_all = lake_data_all %>%
-                        inner_join ( daily_precip[[n]],by = "time")
+                        inner_join ( lake_data_temp[[n]][,c(1,3)],by = "time")
+
+  ld_tmp = data.frame(lake_data[[n]]$time, lake_data[[n]]$rn) 
+  colnames(ld_tmp) = c("time","rn")
+
+  lake_data_allG = lake_data_allG %>%
+                        inner_join ( ld_tmp, by = "time")
 
   #Now make the data sets for each lake, with lags of all lakes
   for (n in 1:n_lakes){
     l_others = 1:n_lakes
     l_others = l_others[-n]
 
+    #Keep the dates
+    lake_dates[[n]] = lake_data_allG$time 
+
     #Make the lake specific data frame 
     lake_data_temp[[n]] = data.frame(lake_data_all$time, 
                           level = lake_data_all[,(n+1)],
-                          lake_data_all[1+l_others])
+                          lake_data_all[1+l_others],
+                          rn = lake_data_all$rn)
+
+    lake_data_tempG[[n]] = data.frame(lake_data_allG$time, 
+                          level = lake_data_allG[,(n+1)],
+                          lake_data_allG[1+l_others],
+                          rn = lake_data_allG$rn)
 
     #Now feed it to the function to add the lags
-     lake_data_lstm[[n]] = make.flashiness.object(
-      data.frame(level = lake_data_temp[[n]]$level), as.data.frame(lake_data_temp[[n]][,3:(n_lakes+1)]),
-      matrix(lagsp-1,1,(n_lakes-1) ), 
+    lake_data_lstm[[n]] = make.flashiness.object(
+      data.frame(level = lake_data_temp[[n]]$level), as.data.frame(lake_data_temp[[n]][,3:(n_lakes+2)]),
+      matrix(lagsp-1,1,(n_lakes) ), 
       auto=F, orders=lagsp-1)
+
+    lake_data[[n]] = make.flashiness.object(
+      data.frame(level = lake_data_tempG[[n]]$level), as.data.frame(lake_data_tempG[[n]][,3:(n_lakes+2)]),
+      matrix(lagsp-1,1,(n_lakes) ), 
+      auto=F, orders=lagsp-1)
+
+   # lake_data[[n]]$time = lake_dates[[n]]
+
+    # One-hot encode the years and months:      
+    years.tmp = data.frame( Year= as.integer(format(lake_data_all$time, "%Y") ))
+    months.tmp = data.frame(Month = as.integer(format(lake_data_all$time, "%m") ))
+    
+    #Get the year alphabet
+    yrss = unique(years.tmp$Year)
+    nyrs = length(yrss)
+    myrs = min(yrss)
+
+    #Use this function from Keras
+    month_encoded =  to_categorical(months.tmp$Month-1, num_classes = 12)
+    colnames(month_encoded) = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul",
+              "Aug", "Sep", "Oct", "Nov", "Dec")
+    year_encoded = to_categorical(years.tmp$Year-myrs, num_classes = nyrs)
+    yr_names = vector("character",nyrs)
+    for(t in 1:nyrs){
+        yr_names[t] = paste("Y",t,sep="")
+    }
+    colnames(year_encoded) = yr_names 
+
+    lake_data_lstm[[n]] = cbind(lake_data_lstm[[n]],month_encoded, year_encoded )
+
 
   }
 
@@ -147,15 +198,15 @@ server <- function(input, output) {
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
   incProgress(1/2, detail="Update models")
-  # updateModel(lake_data,model_form)
+  #updateModel(lake_data, model_form)
   
   #Predict the future lake-level response from the saved GAMs
   incProgress(2/2, detail="Get forecast")
-  #updateGAM_pred(lake_data, fut_precip)
+  #updateGAM_pred(lake_data, fut_precip, output = FALSE)
 
   for(n in 1:n_lakes){
 
-    #This is the github URL for the data. 
+   #This is the github URL for the data. 
     giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_localv2/data/gam_",n,"_forecast.csv", sep="")
     pred_lakes[[n]] = tail(read.csv((giturl)),lagsp )
     pred_lakes[[n]]$time = as.Date(ymd(pred_lakes[[n]]$time)) 
@@ -164,6 +215,12 @@ server <- function(input, output) {
   
   }
   })
+
+  #Add the readable dates back on for plotting
+  for (n in 1:n_lakes){
+    lake_data[[n]]$dates = lake_dates[[n]] 
+  }
+
   ##############################################################
   #PART 3: Forecasting with RNN (LSTM) 
   ##############################################################
@@ -178,15 +235,17 @@ server <- function(input, output) {
   # updateModelDNN(lake_data_lstm,  fut_precip_scaled)
   # m_use_type = "DNN"
   
-  #updateModelCNNLSTM(lake_data_lstm, fut_precip_scaled)
+  # updateModelCNNLSTM(lake_data_lstm, fut_precip_scaled, output=FALSE)
   m_use_type = "CNNLSTM"
 
   #load(file = "todays_forecast.var")
   
-
   for(n in 1:n_lakes){
     giturl = paste("https://raw.githubusercontent.com/jusinowicz/yahara_flashiness/master/yahara_flash_localv2/data/lakemodel_",n,"_",m_use_type,"forecast.csv",sep ="")
-    lake_models_forecast[[n]] = tail(read.csv((giturl)),lagsp)  
+    lake_models_forecast[[n]] = tail(read.csv(giturl),lagsp+1)  
+
+    #Get the last date from the historical data. 
+    last_day = tail(lake_data[[n]],1)
 
     #Because the forecasts are generated as a kind of posterior 
     #draw, get the average and the SE.  
@@ -195,20 +254,22 @@ server <- function(input, output) {
     lm_m = rowMeans(lm_tmp)
     lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
 
-    lake_models_forecast[[n]] = data.frame(time = fut_precip$time, 
+    lake_models_forecast[[n]] = data.frame(time = c(last_day$dates, fut_precip$time), 
               level = lm_m, se = lm_se )
+
+    #Align the last day of data with the prediciton using an extra
+    #scaling factor: 
+    sf = last_day$level/lake_models_forecast[[n]]$level[1]
+    lake_models_forecast[[n]]$level = lake_models_forecast[[n]]$level*sf
+    lake_models_forecast[[n]] = lake_models_forecast[[n]][c(-1),]
+
     print(lake_models_forecast[[n]])
 
-   }
+  }
 })
   ##############################################################
-  #PART 3: Build out the UI
+  #PART 4: Build out the UI
   ##############################################################
-
-  #Add the readable dates back on for plotting
-  for (n in 1:n_lakes){
-    lake_data[[n]]$dates = lake_dates[[n]] 
-  }
 
   ##############################################################
   #Mendota
@@ -690,8 +751,143 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
    } )
 
 
+  ##############################################################
+  #Part 5: Create a simulated forecast and plot predictions
+  ##############################################################
+  #Initialize this for the user-input simulations.
+  updateMatrixInput(session, "new_fut_precip", value = 
+    matrix(fut_precip$rn, dimnames = list(c(as.character(fut_precip$time)), c("rn"))) )
+
+  # #Plot the user-inputted forecast that is to be simulated
+  output$sim_rain = renderPlot({ 
+    nfp = as.data.frame(input$new_fut_precip)
+    nfp$time = rownames(nfp)
+    #nfp$time = ymd(nfp$time)
+    ggplot( data = nfp, aes(x = time, y=rn ) ) +
+    geom_col()
+  })
+
+  #Make predictions from simulated data: 
+  #Remove the readable dates 
+  lake_data2 = lake_data
+
+  for (n in 1:n_lakes){
+    rdts = dim(lake_data[[n]])[2]
+    lake_data2[[n]] = lake_data2[[n]][,-c(rdts)] 
+  }
+
+#Define the plotting variables as reactive values
+  dat_plot_GAMM = reactiveValues(nfp_models_forecast = pred_lakes[[1]], 
+    current=pred_lakes[[1]])
+  dat_plot_RNN = reactiveValues(nfp_models_forecast = lake_models_forecast[[1]], 
+    current=lake_models_forecast[[1]])
+
+  observeEvent(input$go_sim, { 
+    withProgress(message = 'Simulating new GAMMs', value = 0, {
+    #Assign the user-inputted forecast to new variables 
+    #nfp = reactive({input$new_fut_precip})
+    nfp = as.data.frame(input$new_fut_precip)
+    nfp = data.frame( time = rownames(nfp), rn = as.numeric(nfp$rn) )
+
+    incProgress(1/3, detail="Getting forecast")
+    #Make new predictions
+    dat_plot_GAMM$nfp_models_forecast =  updateGAM_pred(lake_data2, nfp, output = TRUE)
+
+    incProgress(2/3, detail="Finalizing first forecast")
+
+    #Finalize data for plotting: 
+    for(n in 1:n_lakes){
+      dat_plot_GAMM$nfp_models_forecast[[n]]$time = 
+      as.Date(ymd(dat_plot_GAMM$nfp_models_forecast[[n]]$time)) 
+    }
+    })
+  })
+
+ observeEvent(input$go_sim,{
+    withProgress(message = 'Simulating new RNNs', value = 0, { 
+    #Assign the user-inputted forecast to new variables 
+    #nfp_scaled = reactive({input$new_fut_precip})
+    nfp_scaled = as.data.frame(input$new_fut_precip)
+    nfp_scaled = data.frame( time = rownames(nfp_scaled), 
+                              rn = as.numeric(nfp_scaled$rn) )
+    nfp_scaled$rn = (nfp_scaled$rn- scale_rn[1])/scale_rn[2]
+ 
+    incProgress(1/3, detail="Getting forecast (this takes the longest)")
+    #Make new predictions
+    dat_plot_RNN$nfp_lstm_forecast = updateModelCNNLSTM(lake_data_lstm, nfp_scaled, output=TRUE)
+    
+    incProgress(2/3, detail="Finalizing second forecast")
+    #Finalize data for plotting: 
+    for(n in 1:n_lakes){
+      #Because the forecasts are generated as a kind of posterior 
+      #draw, get the average and the SE.  
+      lm_tmp =  dat_plot_RNN$nfp_lstm_forecast[[n]]*scale_ll[[n]][2]+
+                scale_ll[[n]][1] 
+      lm_m = rowMeans(lm_tmp)
+      lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
+
+      dat_plot_RNN$nfp_lstm_forecast[[n]] = data.frame(time = c(last_day$dates, fut_precip$time), 
+                level = lm_m, se = lm_se )
+
+      #Align the last day of data with the prediciton using an extra
+      #scaling factor: 
+      sf = last_day$level/dat_plot_RNN$nfp_lstm_forecast[[n]]$level[1]
+      dat_plot_RNN$nfp_lstm_forecast[[n]]$level =   dat_plot_RNN$nfp_lstm_forecast[[n]]$level*sf
+      dat_plot_RNN$nfp_lstm_forecast[[n]] =   dat_plot_RNN$nfp_lstm_forecast[[n]][c(-1),]
 
 
+    }
+    })  
+  })
+
+
+  #Plot each simulated outcome when selected by tab: 
+
+  observeEvent(input$men, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[1]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[1]]
+  })
+
+  observeEvent(input$mon, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[2]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[2]]
+  })  
+
+  observeEvent(input$wau, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[3]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[3]]
+  })
+
+  observeEvent(input$keg, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[4]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[4]]
+  })  
+
+
+  output$simulated_plots=renderPlot({
+
+  ggplot( ) + 
+      geom_line(data = dat_plot_GAMM$current, aes(x = time, y=level),
+        col="red", linetype = "dotted") +
+      geom_point(data = dat_plot_GAMM$current, aes(x = time, y=level),
+        col="red") +
+      geom_ribbon(data = dat_plot_GAMM$current, 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill = "red", alpha = 0.2)+
+      geom_line(data = dat_plot_RNN$current, 
+        aes(x = time, y=level),col = "blue", linetype = "dotted") +
+      geom_point(data = dat_plot_RNN$current, 
+        aes(x = time, y=level),col = "blue") +
+      geom_ribbon(data =dat_plot_RNN$current, 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
+      ylim(max(dat_plot_GAMM$current$level)-max(dat_plot_GAMM$current$level)*0.01, 
+        max(dat_plot_GAMM$current$level)+max(dat_plot_GAMM$current$level)*0.01)+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ")+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
+
+   } )
 
 } ##Server function end
 

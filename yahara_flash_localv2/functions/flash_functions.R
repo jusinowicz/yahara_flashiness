@@ -867,8 +867,8 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 		lake_models_cnnlstm[[n]] %>% fit(
 			train_gen,
 			steps_per_epoch = spe, #test_steps,
-	  	epochs = epochs#,
-			#callbacks = list(cnnlstm_callback,callback_tensorboard(cnnlstm_log )) # Pass callback to training
+	  	epochs = epochs,
+			callbacks = list(cnnlstm_callback,callback_tensorboard(cnnlstm_log )) # Pass callback to training
 		)
 	}
 
