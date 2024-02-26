@@ -1,5 +1,8 @@
 library(shiny)
 library(shinydashboard)
+library(shinyMatrix)
+library(rhandsontable)
+
 library(tidyverse)
 library(lubridate)
 library(curl)
@@ -25,7 +28,7 @@ url_base = c("https://waterservices.usgs.gov/nwis/iv/?format=rdb&sites=")
 nasa_pars = c("PRECTOTCORR")
 
 #Lake prefixes
-lake_pre = c("men","mon","keg","wau")
+lake_pre = c("men","mon","wau","keg")
 #Gauge heights
 g_h = c(839.96, 839.86, 840.01, 839.91)
 
@@ -41,13 +44,21 @@ current_date = ymd( Sys.Date() )
 #Where the lake stage and rain data live: 
 lake_data = vector("list", n_lakes) #GAM formatted
 lake_data_temp = vector("list", n_lakes) #LSTM formatted
+lake_data_tempG = vector("list", n_lakes) #LSTM formatted
 lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 
+#Models:
+lake_models = vector("list", n_lakes) 
+
 #Forecasts:
-lake_models_forecast = vector("list", n_lakes) 
-lake_forecast_dnn = vector("list", n_lakes) #DNN 
-lake_forecast_lstm = vector("list", n_lakes) #LSTM 
+lake_models_forecast = vector("list", n_lakes)  
 pred_lakes = vector("list", n_lakes)
+
+#For the simulations: 
+#Initial blank simulated matrix
+nfp = matrix(0,7,1,dimnames = list(c(as.character(1:7)), c("rn")) )
+# nfp_models_forecast = vector("list", n_lakes) 
+# nfp_lstm_forecast = vector("list", n_lakes) #LSTM 
 
 #Max lags in rain and lake-level data
 lags = 10
@@ -75,6 +86,47 @@ model_form [[4]] = "level ~
   s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
   te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
 
+#Versions from the RF fitting
+model_form [[1]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(mon1,bs=\"cr\",k=6)+s(mon2,bs=\"cr\",k=6)+
+  s(mon3,bs=\"cr\",k=6)+s(mon4,bs=\"cr\",k=6)+s(mon5,bs=\"cr\",k=6)+
+  s(wau1,bs=\"cr\",k=6)+s(wau2,bs=\"cr\",k=6)+
+  s(keg1,bs=\"cr\",k=6)+s(keg2,bs=\"cr\",k=6)+
+  s(keg3,bs=\"cr\",k=6)+s(keg4,bs=\"cr\",k=6)+
+  s(keg5,bs=\"cr\",k=6)+s(keg6,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[2]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(men1,bs=\"cr\",k=6)+s(men2,bs=\"cr\",k=6)+
+  s(men3,bs=\"cr\",k=6)+s(men4,bs=\"cr\",k=6)+
+  s(wau1,bs=\"cr\",k=6)+s(wau2,bs=\"cr\",k=6)+
+  s(wau3,bs=\"cr\",k=6)+s(wau4,bs=\"cr\",k=6)+
+  s(wau5,bs=\"cr\",k=6)+
+  s(keg1,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[3]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(men1,bs=\"cr\",k=6)+s(men2,bs=\"cr\",k=6)+
+  s(men3,bs=\"cr\",k=6)+s(men4,bs=\"cr\",k=6)+
+  s(men5,bs=\"cr\",k=6)+s(men6,bs=\"cr\",k=6)+
+  s(mon1,bs=\"cr\",k=6)+s(mon2,bs=\"cr\",k=6)+
+  s(keg1,bs=\"cr\",k=6)+s(keg2,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
+model_form [[4]] = "level ~ 
+  s(rn,bs=\"cr\",k=6)+s(rn1,bs=\"cr\",k=6)+
+  s(rn2,bs=\"cr\",k=6)+s(rn3,bs=\"cr\",k=6)+
+  s(men1,bs=\"cr\",k=6)+s(men2,bs=\"cr\",k=6)+
+  s(men3,bs=\"cr\",k=6)+
+  s(wau1,bs=\"cr\",k=6)+s(wau3,bs=\"cr\",k=6)+
+  te(rn,rn1,k=20)+te(rn1,rn2,k=20)+te(rn2,rn3,k=20)"
+
 #Flooding thresholds from Usinowicz et al. 2016
 #For Mendota, gauge at 839.96 ft. 
 #			10% = 259.64m = 851.84 ft.
@@ -88,7 +140,6 @@ model_form [[4]] = "level ~
 
 thresh_10 = c((851.84 ), (847.01 ))
 thresh_100 = c((852.43 ), (847.77))
-
 
 #To color code max lake level, according to flood threat level
 flash_col= c("aqua", "orange", "red")
@@ -287,7 +338,8 @@ updateModel = function (lake_data, model_form){
     n_files = length(model_files)
     #Loop and load the files 
     for ( n in 1:n_files ){ 
-      load(paste("./data/", model_files[n],sep="") )
+      x_tmp = load(paste("./data/", model_files[n],sep="") )
+      lake_models[[n]] = get(x_tmp)
     }
   
   }else{ 
@@ -330,8 +382,13 @@ updateModel = function (lake_data, model_form){
     }
 
     #save(file = "lakeGAMsLpB.var", model_smooths, models_Xp, models_coef, models_Vp )
-    save(file = "./data/lakeGAMsfull.var", lake_models) #Too big? :(
+    #save(file = "./data/lakeGAMsfull.var", lake_models) #Too big? :(
 
+    for(n in 1:n_lakes) {
+      fsave = paste("./data/lakeGAMsfull",n,".var", sep="")
+      model_tmp = lake_models[[n]]
+      save(file = fsave, model_tmp ) #Too big? :(
+    }
 
   }
 
@@ -342,7 +399,7 @@ updateModel = function (lake_data, model_form){
 # It returns fitted data points with SE for the number of future precipitation 
 # events that have been given to it. 
 ###############################################################################
-updateGAM_pred = function(lake_data, fut_precip){
+updateGAM_pred = function(lake_data, fut_precip, output){
 
     #Where the fitted model coefficients and Lp matrix live
     model_files = list.files("./data/")
@@ -353,11 +410,16 @@ updateGAM_pred = function(lake_data, fut_precip){
     n_files = length(model_files)
     #Loop and load the files 
     for ( n in 1:n_files ){ 
-      load(paste("./data/", model_files[n],sep="")  )
+      x_tmp = load(paste("./data/", model_files[n],sep="") )
+      lake_models[[n]] = get(x_tmp)
     }
 
-    predictFlashGAM(lake_data, fut_precip,lake_models)
-
+    if (output == FALSE){
+      predictFlashGAM(lake_data, fut_precip, lake_models, output = output)
+    }else{ 
+      return( predictFlashGAM(lake_data, fut_precip, lake_models, 
+        output = output) )
+    }
 }
 
 ###############################################################################
@@ -469,7 +531,10 @@ updateModelDNN = function(lake_data_lstm,  fut_precip_scaled, lagsp = 7 ){
 # 
 ###############################################################################
 
-updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7 ){
+updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7, output ){
+
+  #If output is true, this is being used for fast forecats so reduce steps: 
+  if(output == TRUE) { spe = 10} else {spe=80}
 
   #First check to see if the fitted models already exist. If they don't, 
   #run the code to fit the models. This is time consuming! 
@@ -499,14 +564,19 @@ updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7 ){
     }
 
     #If fewer than n_files have been updated then run the updates
-    if ( tyes < n_files){
+    if ( tyes < n_files || output == TRUE){
       #We have to update each model.This is a wrapper for keras
-      fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp ) 
-    } 
+      if(output == FALSE ){ 
+        fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp, output=output ) 
+      }else{ 
+        return(fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp, 
+          spe = spe, output=output ) )
+      }
+    }
  
   }else{ 
     #We have to fit the models.This is a wrapper for keras
-    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp ) 
+    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp,epochs=20, output=output ) 
   }
 
 }

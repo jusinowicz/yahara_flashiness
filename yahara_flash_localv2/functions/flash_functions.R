@@ -426,11 +426,12 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models, output=FALSE){
 
     }
 
-
-    for (n in 1:n_lakes){
+		for (n in 1:n_lakes){
 			pred_lakes[[n]]  = as.data.frame(pr_tmp_all[[n]])
 			pred_lakes[[n]]$time = fut_precip$time
-
+		}
+		
+		if (output == FALSE) { 
 			#This will keep adding the newest forecasts to the same file to keep
 			#a rolling table of past predictions.
 			tbl_file = paste("./data/gam_",n,"_forecast.csv", sep="")
@@ -451,13 +452,11 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models, output=FALSE){
 				tbl_tmp = pred_lakes[[n]]
 				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
 			}
-		}
-
-		#Save as files or return the results
-		if (output == FALSE) { 
+			
+			#Save as files or return the results
     	save(file = "./data/gams_forecast.var", lake_models_forecast )
+    
     }else{
-  
     	return(pred_lakes)
     }
     

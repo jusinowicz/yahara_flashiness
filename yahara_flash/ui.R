@@ -6,7 +6,8 @@ ui <- dashboardPage(
       menuItem("Mendota", tabName = "Mendota"),
       menuItem("Monona", tabName = "Monona"),
       menuItem("Waubesa", tabName = "Waubesa"),
-      menuItem("Kegonsa", tabName = "Kegonsa")
+      menuItem("Kegonsa", tabName = "Kegonsa"),
+      menuItem("Simulate!", tabName="simulate")
     )
   ),
   dashboardBody(
@@ -80,10 +81,11 @@ ui <- dashboardPage(
               plotOutput("full_plot1")
             )
             # Give a more historical perspective on the data:
-          ), 
+          )
 
         )
       ),
+
       tabItem("Monona",
         fluidRow(
           column(width = 3,
@@ -149,7 +151,7 @@ ui <- dashboardPage(
               plotOutput("full_plot2")
             )
             # Give a more historical perspective on the data:
-          ), 
+          )
 
         )
       ),
@@ -218,7 +220,7 @@ ui <- dashboardPage(
               plotOutput("full_plot3")
             )
             # Give a more historical perspective on the data:
-          ), 
+          ) 
 
         )
       ),
@@ -288,15 +290,64 @@ ui <- dashboardPage(
               plotOutput("full_plot4")
             )
             # Give a more historical perspective on the data:
-          ), 
+          )
 
         )
-      )
-      #End Tabs
+      ),
+    tabItem("simulate",
+      #Edit the 7-day forecast
+      fluidRow(
+        #Editable matrix for user input
+        column(width = 5,
+          #"Make your own 7-day forecast",
+          matrixInput("new_fut_precip", 
+                      value = nfp, 
+                      rows = list(names=TRUE),
+                      cols = list( names = TRUE )
+                    )
+        ),
 
+        #Plot what the simulation forecast looks like
+        column(width=7,
+             fluidRow(
+             # Plot
+             box(width = 12, plotOutput("sim_rain") )
+            )
+          )
+       ),
+
+      #Show the results across lakes
+      fluidRow(
+        #Information column 
+        column(width = 3,
+          #Run the simulation: 
+          
+          box(
+            width = 12, 
+            title = "Simulation results",
+            actionButton("go_sim", "Simulate!"),
+            p("Create a 7-day forecast in the table above and then hit this 
+              button to generate new predictions. ") )
+        ),
+        #Plots of the forecasts per-lake 
+        column(width = 9,
+            actionButton("men", "Mendota"),
+            actionButton("mon", "Monona"),
+            actionButton("wau", "Waubesa"),
+            actionButton("keg", "Kegonsa"), 
+            box(
+              width = 12,
+              plotOutput("simulated_plots")
+            )
+            # Give a more historical perspective on the data:
+          ),
+
+        )
     )
+      #End Tabs
   )
 
+)
 )
 
 
