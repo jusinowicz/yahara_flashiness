@@ -301,9 +301,11 @@ fitGAM_ar = function( lake_data, model_form){
 # lake_models 			Is a list with an element for each lake. Each element 
 #						in the list has two components: a gam model fitted by 
 #						mgcv, and an ar model fitted by ar. 
+#
+# output						If TRUE, function will return the results instead of saving
 ###############################################################################
 
-predictFlashGAM = function(lake_data, fut_precip, lake_models){
+predictFlashGAM = function(lake_data, fut_precip, lake_models, output=FALSE){
 		#Temporary data sets
 		pr_tmp_all = vector("list", n_lakes)
 		lt_use_all = vector("list", n_lakes)
@@ -451,7 +453,13 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models){
 			}
 		}
 
-    save(file = "./data/gams_forecast.var", lake_models_forecast )
+		#Save as files or return the results
+		if (output == FALSE) { 
+    	save(file = "./data/gams_forecast.var", lake_models_forecast )
+    }else{
+  
+    	return(pred_lakes)
+    }
     
 }
 
@@ -729,11 +737,15 @@ fit_predDNN = function(lake_data_lstm,fut_precip_scaled, lagsp,
 # step 			Which time points (1 = use every time point)
 # delay			Number of time steps into the future to predict
 # batch_size
-# predser 	Index of label	
+# predser 	Index of label
+# spe 			Steps per epic. Can be changed for speed	
+# output 		If TRUE, then the predictions are returned instead
+#						of being saved as files. 
 ##############################################################
 
 fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp, 
-	lookback = 10, step = 1, delay = 1, batch_size = 20, predser=1, epochs=2 ){
+	lookback = 10, step = 1, delay = 1, batch_size = 20, predser=1, epochs=2,
+	spe = 80, output=FALSE ){
 	
 	#Store fitted models
 	lake_models_cnnlstm = vector("list", n_lakes)
@@ -852,12 +864,11 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
 
 		#Fit the model to training data
 		#tensorboard(dnn_log )
-
 		lake_models_cnnlstm[[n]] %>% fit(
 			train_gen,
-			steps_per_epoch = 80, #test_steps,
-	  	epochs = epochs,
-			callbacks = list(cnnlstm_callback,callback_tensorboard(cnnlstm_log )) # Pass callback to training
+			steps_per_epoch = spe, #test_steps,
+	  	epochs = epochs#,
+			#callbacks = list(cnnlstm_callback,callback_tensorboard(cnnlstm_log )) # Pass callback to training
 		)
 	}
 
@@ -957,29 +968,35 @@ fit_predCNNLSTM = function(lake_data_lstm,fut_precip_scaled, lagsp,
   
 	}
 
-		#This will keep adding the newest forecasts to the same file to keep
-		#a rolling table of past predictions.
-	for(n in 1:n_lakes){
-		tbl_file = paste("./data/lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
-		if(file.exists(tbl_file)){
-			tbl_tmp = read.csv(tbl_file)
-			tbl_row = dim(tbl_tmp)[1]
-			tbl_col = dim(tbl_tmp)[2]
-			#Add a new row
-			tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
-			#Overwrite the existing data in the window 
-			#with the new predictions
-			tbl_tmp[( tbl_row-(lagsp-1) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
-			write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
-		
-		}else {
-			#If the file does not already exist
-			tbl_tmp = lake_forecast_cnnlstm[[n]]
-			write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+	if(output == FALSE) { 
+			#This will keep adding the newest forecasts to the same file to keep
+			#a rolling table of past predictions.
+		for(n in 1:n_lakes){
+			tbl_file = paste("./data/lakemodel_",n,"_CNNLSTMforecast.csv", sep="")
+			if(file.exists(tbl_file)){
+				tbl_tmp = read.csv(tbl_file)
+				tbl_row = dim(tbl_tmp)[1]
+				tbl_col = dim(tbl_tmp)[2]
+				#Add a new row
+				tbl_tmp = rbind(tbl_tmp, matrix(0,1,tbl_col))
+				#Overwrite the existing data in the window 
+				#with the new predictions
+				tbl_tmp[( tbl_row-(lagsp-1) ):(tbl_row+1),] = lake_forecast_cnnlstm[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			
+			}else {
+				#If the file does not already exist
+				tbl_tmp = lake_forecast_cnnlstm[[n]]
+				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			}
 		}
+
+		save(file = "./data/todays_CNNLSTMforecast.var", lake_forecast_cnnlstm )
+	}else { 
+		#If output == TRUE then return the forecast
+		return(lake_forecast_cnnlstm)
 	}
 
-	save(file = "./data/todays_CNNLSTMforecast.var", lake_forecast_cnnlstm )
 
 }
 

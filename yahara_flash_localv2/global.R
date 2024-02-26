@@ -51,12 +51,14 @@ lake_data_lstm = vector("list", n_lakes) #LSTM formatted
 lake_models = vector("list", n_lakes) 
 
 #Forecasts:
-lake_models_forecast = vector("list", n_lakes) 
-lake_forecast_dnn = vector("list", n_lakes) #DNN 
-lake_forecast_lstm = vector("list", n_lakes) #LSTM 
+lake_models_forecast = vector("list", n_lakes)  
 pred_lakes = vector("list", n_lakes)
 
+#For the simulations: 
+#Initial blank simulated matrix
 nfp = matrix(0,7,1,dimnames = list(c(as.character(1:7)), c("rn")) )
+# nfp_models_forecast = vector("list", n_lakes) 
+# nfp_lstm_forecast = vector("list", n_lakes) #LSTM 
 
 #Max lags in rain and lake-level data
 lags = 10
@@ -397,7 +399,7 @@ updateModel = function (lake_data, model_form){
 # It returns fitted data points with SE for the number of future precipitation 
 # events that have been given to it. 
 ###############################################################################
-updateGAM_pred = function(lake_data, fut_precip){
+updateGAM_pred = function(lake_data, fut_precip, output){
 
     #Where the fitted model coefficients and Lp matrix live
     model_files = list.files("./data/")
@@ -412,8 +414,12 @@ updateGAM_pred = function(lake_data, fut_precip){
       lake_models[[n]] = get(x_tmp)
     }
 
-    predictFlashGAM(lake_data, fut_precip, lake_models)
-
+    if (output == FALSE){
+      predictFlashGAM(lake_data, fut_precip, lake_models, output = output)
+    }else{ 
+      return( predictFlashGAM(lake_data, fut_precip, lake_models, 
+        output = output) )
+    }
 }
 
 ###############################################################################
@@ -525,7 +531,10 @@ updateModelDNN = function(lake_data_lstm,  fut_precip_scaled, lagsp = 7 ){
 # 
 ###############################################################################
 
-updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7 ){
+updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7, output ){
+
+  #If output is true, this is being used for fast forecats so reduce steps: 
+  if(output == TRUE) { spe = 10} else {spe=80}
 
   #First check to see if the fitted models already exist. If they don't, 
   #run the code to fit the models. This is time consuming! 
@@ -555,14 +564,19 @@ updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7 ){
     }
 
     #If fewer than n_files have been updated then run the updates
-    if ( tyes < n_files){
+    if ( tyes < n_files || output == TRUE){
       #We have to update each model.This is a wrapper for keras
-      fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp ) 
-    } 
+      if(output == FALSE ){ 
+        fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp, output=output ) 
+      }else{ 
+        return(fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp, 
+          spe = spe, output=output ) )
+      }
+    }
  
   }else{ 
     #We have to fit the models.This is a wrapper for keras
-    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp,,epochs=20 ) 
+    fit_predCNNLSTM(lake_data_lstm, fut_precip_scaled, lagsp,epochs=20, output=output ) 
   }
 
 }

@@ -321,10 +321,13 @@ ui <- dashboardPage(
         #Information column 
         column(width = 3,
           #Run the simulation: 
-          actionButton("go_sim", "Simulate!"),
+          
           box(
             width = 12, 
-            title = "Simulation results" )
+            title = "Simulation results",
+            actionButton("go_sim", "Simulate!"),
+            p("Create a 7-day forecast in the table above and then hit this 
+              button to generate new predictions. ") )
         ),
         #Plots of the forecasts per-lake 
         column(width = 9,

@@ -198,11 +198,11 @@ server <- function(input, output, session) {
   #Check to see if the GAMs have already been fitted and saved in 
   #a *.var file, or if we need to fit them. 
   incProgress(1/2, detail="Update models")
-  updateModel(lake_data,model_form)
+  updateModel(lake_data, model_form)
   
   #Predict the future lake-level response from the saved GAMs
   incProgress(2/2, detail="Get forecast")
-  updateGAM_pred(lake_data, fut_precip)
+  updateGAM_pred(lake_data, fut_precip, output = FALSE)
 
   for(n in 1:n_lakes){
 
@@ -235,7 +235,7 @@ server <- function(input, output, session) {
   # updateModelDNN(lake_data_lstm,  fut_precip_scaled)
   # m_use_type = "DNN"
   
-  updateModelCNNLSTM(lake_data_lstm, fut_precip_scaled)
+  updateModelCNNLSTM(lake_data_lstm, fut_precip_scaled, output=FALSE)
   m_use_type = "CNNLSTM"
 
   #load(file = "todays_forecast.var")
@@ -758,10 +758,7 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
   updateMatrixInput(session, "new_fut_precip", value = 
     matrix(fut_precip$rn, dimnames = list(c(as.character(fut_precip$time)), c("rn"))) )
 
-  nfp_scaled = fut_precip_scaled
-
   # #Plot the user-inputted forecast that is to be simulated
-
   output$sim_rain = renderPlot({ 
     nfp = as.data.frame(input$new_fut_precip)
     nfp$time = rownames(nfp)
@@ -769,6 +766,121 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
     ggplot( data = nfp, aes(x = time, y=rn ) ) +
     geom_col()
   })
+
+  #Make predictions from simulated data: 
+  #Remove the readable dates 
+  lake_data2 = lake_data
+
+  for (n in 1:n_lakes){
+    rdts = dim(lake_data[[n]])[2]
+    lake_data2[[n]] = lake_data2[[n]][,-c(rdts)] 
+  }
+
+#Define the plotting variables as reactive values
+  dat_plot_GAMM = reactiveValues(nfp_models_forecast = pred_lakes[[1]], 
+    current=pred_lakes[[1]])
+  dat_plot_RNN = reactiveValues(nfp_models_forecast = lake_models_forecast[[1]], 
+    current=lake_models_forecast[[1]])
+
+  observeEvent(input$go_sim, { 
+    #Assign the user-inputted forecast to new variables 
+    #nfp = reactive({input$new_fut_precip})
+    nfp = as.data.frame(input$new_fut_precip)
+    nfp = data.frame( time = rownames(nfp), rn = as.numeric(nfp$rn) )
+   
+    #Make new predictions
+    dat_plot_GAMM$nfp_models_forecast =  updateGAM_pred(lake_data2, nfp, output = TRUE)
+
+    #Finalize data for plotting: 
+    for(n in 1:n_lakes){
+      dat_plot_GAMM$nfp_models_forecast[[n]]$time = 
+      as.Date(ymd(dat_plot_GAMM$nfp_models_forecast[[n]]$time)) 
+    }
+
+  })
+
+ observeEvent(input$go_sim,{ 
+    #Assign the user-inputted forecast to new variables 
+    #nfp_scaled = reactive({input$new_fut_precip})
+    nfp_scaled = as.data.frame(input$new_fut_precip)
+    nfp_scaled = data.frame( time = rownames(nfp_scaled), 
+                              rn = as.numeric(nfp_scaled$rn) )
+    nfp_scaled$rn = (nfp_scaled$rn- scale_rn[1])/scale_rn[2]
+ 
+    #Make new predictions
+    dat_plot_RNN$nfp_lstm_forecast = updateModelCNNLSTM(lake_data_lstm, nfp_scaled, output=TRUE)
+    
+    #Finalize data for plotting: 
+    for(n in 1:n_lakes){
+      #Because the forecasts are generated as a kind of posterior 
+      #draw, get the average and the SE.  
+      lm_tmp =  dat_plot_RNN$nfp_lstm_forecast[[n]]*scale_ll[[n]][2]+
+                scale_ll[[n]][1] 
+      lm_m = rowMeans(lm_tmp)
+      lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
+
+      dat_plot_RNN$nfp_lstm_forecast[[n]] = data.frame(time = c(last_day$dates, fut_precip$time), 
+                level = lm_m, se = lm_se )
+
+      #Align the last day of data with the prediciton using an extra
+      #scaling factor: 
+      sf = last_day$level/dat_plot_RNN$nfp_lstm_forecast[[n]]$level[1]
+      dat_plot_RNN$nfp_lstm_forecast[[n]]$level =   dat_plot_RNN$nfp_lstm_forecast[[n]]$level*sf
+      dat_plot_RNN$nfp_lstm_forecast[[n]] =   dat_plot_RNN$nfp_lstm_forecast[[n]][c(-1),]
+
+
+    }
+  
+  })
+
+
+  #Plot each simulated outcome when selected by tab: 
+
+  observeEvent(input$men, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[1]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[1]]
+  })
+
+  observeEvent(input$mon, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[2]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[2]]
+  })  
+
+  observeEvent(input$wau, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[3]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[3]]
+  })
+
+  observeEvent(input$keg, {
+    dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[4]]
+    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[4]]
+  })  
+
+
+  output$simulated_plots=renderPlot({
+
+  ggplot( ) + 
+      geom_line(data = dat_plot_GAMM$current, aes(x = time, y=level),
+        col="red", linetype = "dotted") +
+      geom_point(data = dat_plot_GAMM$current, aes(x = time, y=level),
+        col="red") +
+      geom_ribbon(data = dat_plot_GAMM$current, 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill = "red", alpha = 0.2)+
+      geom_line(data = dat_plot_RNN$current, 
+        aes(x = time, y=level),col = "blue", linetype = "dotted") +
+      geom_point(data = dat_plot_RNN$current, 
+        aes(x = time, y=level),col = "blue") +
+      geom_ribbon(data =dat_plot_RNN$current, 
+        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
+      ylim(max(dat_plot_GAMM$current$level)-max(dat_plot_GAMM$current$level)*0.01, 
+        max(dat_plot_GAMM$current$level)+max(dat_plot_GAMM$current$level)*0.01)+
+      theme_minimal() + theme(text=element_text(size=21)) +
+      ggtitle("Forecasted lake level") + xlab("Date")+
+      ylab("Lake level (ft) ")+
+      geom_hline(yintercept=thresh_10[1], col="orange", linetype = "dotted")+
+      geom_hline(yintercept=thresh_100[1], col="red", linetype = "dotted")
+
+   } )
 
 } ##Server function end
 
