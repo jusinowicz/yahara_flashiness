@@ -432,27 +432,28 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models, output=FALSE){
 		}
 		
 		if (output == FALSE) { 
-			#This will keep adding the newest forecasts to the same file to keep
-			#a rolling table of past predictions.
-			tbl_file = paste("./data/gam_",n,"_forecast.csv", sep="")
-			if(file.exists(tbl_file)){
-				tbl_tmp = read.csv(tbl_file)
-				tbl_tmp$time = as.Date(ymd(tbl_tmp$time)) 
-				tbl_row = dim(tbl_tmp)[1]
-				tbl_col = dim(tbl_tmp)[2]
-				#Add a new row
-				tbl_tmp = rbind(tbl_tmp, tbl_tmp[1,])
-				#Overwrite the existing data in the window 
-				#with the new predictions
-				tbl_tmp[( tbl_row-(n_days-2) ):(tbl_row+1),] = pred_lakes[[n]]
-				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
-			
-			}else {
-				#If the file does not already exist
-				tbl_tmp = pred_lakes[[n]]
-				write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+			for (n in 1:n_lakes){
+				#This will keep adding the newest forecasts to the same file to keep
+				#a rolling table of past predictions.
+				tbl_file = paste("./data/gam_",n,"_forecast.csv", sep="")
+				if(file.exists(tbl_file)){
+					tbl_tmp = read.csv(tbl_file)
+					tbl_tmp$time = as.Date(ymd(tbl_tmp$time)) 
+					tbl_row = dim(tbl_tmp)[1]
+					tbl_col = dim(tbl_tmp)[2]
+					#Add a new row
+					tbl_tmp = rbind(tbl_tmp, tbl_tmp[1,])
+					#Overwrite the existing data in the window 
+					#with the new predictions
+					tbl_tmp[( tbl_row-(n_days-2) ):(tbl_row+1),] = pred_lakes[[n]]
+					write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+				
+				}else {
+					#If the file does not already exist
+					tbl_tmp = pred_lakes[[n]]
+					write.table(tbl_tmp, file = tbl_file, sep=",",row.names=FALSE)
+				}
 			}
-			
 			#Save as files or return the results
     	save(file = "./data/gams_forecast.var", lake_models_forecast )
     
