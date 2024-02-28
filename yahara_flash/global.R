@@ -534,7 +534,7 @@ updateModelDNN = function(lake_data_lstm,  fut_precip_scaled, lagsp = 7 ){
 updateModelCNNLSTM = function(lake_data_lstm, fut_precip_scaled, lagsp = 7, output ){
 
   #If output is true, this is being used for fast forecats so reduce steps: 
-  if(output == TRUE) { spe = 10} else {spe=80}
+  if(output == TRUE) { spe = 3} else {spe=80}
 
   #First check to see if the fitted models already exist. If they don't, 
   #run the code to fit the models. This is time consuming! 

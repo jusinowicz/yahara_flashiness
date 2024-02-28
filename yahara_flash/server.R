@@ -803,64 +803,66 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
     })
   })
 
- observeEvent(input$go_sim,{
-    withProgress(message = 'Simulating new RNNs', value = 0, { 
-    #Assign the user-inputted forecast to new variables 
-    #nfp_scaled = reactive({input$new_fut_precip})
-    nfp_scaled = as.data.frame(input$new_fut_precip)
-    nfp_scaled = data.frame( time = rownames(nfp_scaled), 
-                              rn = as.numeric(nfp_scaled$rn) )
-    nfp_scaled$rn = (nfp_scaled$rn- scale_rn[1])/scale_rn[2]
+  #Can't deploy this on the posit server -- it takes up too much memory and 
+  #just fails to run :(
+ # observeEvent(input$go_sim,{
+ #    withProgress(message = 'Simulating new RNNs', value = 0, { 
+ #    #Assign the user-inputted forecast to new variables 
+ #    #nfp_scaled = reactive({input$new_fut_precip})
+ #    nfp_scaled = as.data.frame(input$new_fut_precip)
+ #    nfp_scaled = data.frame( time = rownames(nfp_scaled), 
+ #                              rn = as.numeric(nfp_scaled$rn) )
+ #    nfp_scaled$rn = (nfp_scaled$rn- scale_rn[1])/scale_rn[2]
  
-    incProgress(1/3, detail="Getting forecast (this takes the longest)")
-    #Make new predictions
-    dat_plot_RNN$nfp_lstm_forecast = updateModelCNNLSTM(lake_data_lstm, nfp_scaled, output=TRUE)
+ #    incProgress(1/3, detail="Getting forecast (this takes the longest)")
+ #    #Make new predictions
+ #    dat_plot_RNN$nfp_lstm_forecast = updateModelCNNLSTM(lake_data_lstm, nfp_scaled, output=TRUE)
     
-    incProgress(2/3, detail="Finalizing second forecast")
-    #Finalize data for plotting: 
-    for(n in 1:n_lakes){
-      #Because the forecasts are generated as a kind of posterior 
-      #draw, get the average and the SE.  
-      lm_tmp =  dat_plot_RNN$nfp_lstm_forecast[[n]]*scale_ll[[n]][2]+
-                scale_ll[[n]][1] 
-      lm_m = rowMeans(lm_tmp)
-      lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
+ #    incProgress(2/3, detail="Finalizing second forecast")
+ #    #Finalize data for plotting: 
+ #    for(n in 1:n_lakes){
+ #      #Because the forecasts are generated as a kind of posterior 
+ #      #draw, get the average and the SE.  
+ #      lm_tmp =  dat_plot_RNN$nfp_lstm_forecast[[n]]*scale_ll[[n]][2]+
+ #                scale_ll[[n]][1] 
+ #      lm_m = rowMeans(lm_tmp)
+ #      lm_se = sqrt( apply((lm_tmp),1,var) )*1E2
 
-      dat_plot_RNN$nfp_lstm_forecast[[n]] = data.frame(time = c(last_day$dates, fut_precip$time), 
-                level = lm_m, se = lm_se )
+ #      dat_plot_RNN$nfp_lstm_forecast[[n]] = data.frame(time = c(last_day$dates, fut_precip$time), 
+ #                level = lm_m, se = lm_se )
 
-      #Align the last day of data with the prediciton using an extra
-      #scaling factor: 
-      sf = last_day$level/dat_plot_RNN$nfp_lstm_forecast[[n]]$level[1]
-      dat_plot_RNN$nfp_lstm_forecast[[n]]$level =   dat_plot_RNN$nfp_lstm_forecast[[n]]$level*sf
-      dat_plot_RNN$nfp_lstm_forecast[[n]] =   dat_plot_RNN$nfp_lstm_forecast[[n]][c(-1),]
+ #      #Align the last day of data with the prediciton using an extra
+ #      #scaling factor: 
+ #      sf = last_day$level/dat_plot_RNN$nfp_lstm_forecast[[n]]$level[1]
+ #      dat_plot_RNN$nfp_lstm_forecast[[n]]$level =   dat_plot_RNN$nfp_lstm_forecast[[n]]$level*sf
+ #      dat_plot_RNN$nfp_lstm_forecast[[n]] =   dat_plot_RNN$nfp_lstm_forecast[[n]][c(-1),]
 
 
-    }
-    })  
-  })
+ #    }
+ #    })  
+ #  })
 
 
   #Plot each simulated outcome when selected by tab: 
 
   observeEvent(input$men, {
     dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[1]]
-    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[1]]
+    #dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[1]]
   })
 
   observeEvent(input$mon, {
     dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[2]]
-    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[2]]
+    #dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[2]]
   })  
 
   observeEvent(input$wau, {
     dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[3]]
-    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[3]]
+    #dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[3]]
   })
 
   observeEvent(input$keg, {
     dat_plot_GAMM$current = dat_plot_GAMM$nfp_models_forecast[[4]]
-    dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[4]]
+    #dat_plot_RNN$current = dat_plot_RNN$nfp_lstm_forecast[[4]]
   })  
 
 
@@ -873,12 +875,12 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
         col="red") +
       geom_ribbon(data = dat_plot_GAMM$current, 
         aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill = "red", alpha = 0.2)+
-      geom_line(data = dat_plot_RNN$current, 
-        aes(x = time, y=level),col = "blue", linetype = "dotted") +
-      geom_point(data = dat_plot_RNN$current, 
-        aes(x = time, y=level),col = "blue") +
-      geom_ribbon(data =dat_plot_RNN$current, 
-        aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
+      #geom_line(data = dat_plot_RNN$current, 
+      #  aes(x = time, y=level),col = "blue", linetype = "dotted") +
+      #geom_point(data = dat_plot_RNN$current, 
+      #  aes(x = time, y=level),col = "blue") +
+      #geom_ribbon(data =dat_plot_RNN$current, 
+      #  aes(x = time, ymin = level-se*1.96, ymax = level+se*1.96), fill="blue", alpha = 0.2)+
       ylim(max(dat_plot_GAMM$current$level)-max(dat_plot_GAMM$current$level)*0.01, 
         max(dat_plot_GAMM$current$level)+max(dat_plot_GAMM$current$level)*0.01)+
       theme_minimal() + theme(text=element_text(size=21)) +
