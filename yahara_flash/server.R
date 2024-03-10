@@ -804,7 +804,7 @@ if( mpm4 >= thresh_100[1] ){ col_use4 = flash_col[3]}
   })
 
   #Can't deploy this on the posit server -- it takes up too much memory and 
-  #just fails to run :(
+  #just fails to run
  # observeEvent(input$go_sim,{
  #    withProgress(message = 'Simulating new RNNs', value = 0, { 
  #    #Assign the user-inputted forecast to new variables 
