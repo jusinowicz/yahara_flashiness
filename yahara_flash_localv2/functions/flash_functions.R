@@ -507,8 +507,8 @@ plot_smooths_block = function(model, selected_data, selected_terms, newdata = NU
   predictions = predict(model, newdata = input_data, type="response")+input_data$level
   
   # Plot the effect of varying term
-  plot(predictions, type = "l", xlab = varying_term, ylab = "Level")
-  lines(input_data$level)
+  # plot(predictions, type = "l", xlab = varying_term, ylab = "Level")
+  # lines(input_data$level)
 
   output = data.frame(input_data, predictions = predictions)
 

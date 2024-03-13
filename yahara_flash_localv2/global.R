@@ -429,7 +429,7 @@ updateGAM_pred = function(lake_data, fut_precip, output){
 # gam_plot_block is a way to visualize the impact of whole lakes on one another
 # according to the fitted smooths. 
 
-gam_plot_block = function(lake_data, input_date ){
+gam_plot_block = function(lake_data, input_date= c("2024-03-10") ){
 
   input_date = ymd(input_date)
   date_index = which(lake_dates[[1]] == input_date)
@@ -451,7 +451,7 @@ gam_plot_block = function(lake_data, input_date ){
     #For each model, get the impacts of the other lakes: 
     n_lakes = length(lake_models)
     for (n in 1:n_lakes) {
-      smooth_terms = attr(model$terms, "term.labels")
+      smooth_terms = attr(lake_models[[n]]$gam$terms, "term.labels")
       lakes_in = vector("logical", n_lakes)
       lexclude_tmp = NULL
       lexclude_diff_tmp = NULL
@@ -483,12 +483,14 @@ gam_plot_block = function(lake_data, input_date ){
         lexclude_tmp = cbind(level=selected_data$level,rn =selected_data$rn, 
                               lexclude_tmp, lexclude_diff_tmp)
         lexclude[[n]] = lexclude_tmp
-        colnames(lexclude[[n]]) = c("level", "rn", other_lakes, other_lakes)
+        colnames(lexclude[[n]]) = c("level", "rn", lake_pre[lakes_in], lake_pre[lakes_in])
 
-      }
-
-
+      #####################################################################
       #Simple plots: 
+
+      all_fig_names = paste("lake_pred_diffs_",lake_pre[n], ".pdf",sep="")
+      pdf(file=all_fig_names, height=8, width=8, onefile=TRUE, family='Helvetica', pointsize=16)
+
       col_use_diffs = c("black", "green", "blue")
       par(mfrow = c(2,1)) 
 
@@ -505,7 +507,10 @@ gam_plot_block = function(lake_data, input_date ){
 
        legend("topleft", legend = colnames(lexclude[[n]])[6:8], col =c(col_use_diffs), lty=1,
         title = "Lake",)
+    
 
+    dev.off()
+  }
 
 }
 
