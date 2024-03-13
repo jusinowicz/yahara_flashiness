@@ -60,6 +60,9 @@ nfp = matrix(0,7,1,dimnames = list(c(as.character(1:7)), c("rn")) )
 # nfp_models_forecast = vector("list", n_lakes) 
 # nfp_lstm_forecast = vector("list", n_lakes) #LSTM 
 
+#Lakes fit with each other lake held constant
+lexclude = vector("list", n_lakes)
+
 #Max lags in rain and lake-level data
 lags = 10
 
@@ -420,6 +423,90 @@ updateGAM_pred = function(lake_data, fut_precip, output){
       return( predictFlashGAM(lake_data, fut_precip, lake_models, 
         output = output) )
     }
+}
+
+###############################################################################
+# gam_plot_block is a way to visualize the impact of whole lakes on one another
+# according to the fitted smooths. 
+
+gam_plot_block = function(lake_data, input_date ){
+
+  input_date = ymd(input_date)
+  date_index = which(lake_dates[[1]] == input_date)
+
+  #First, load the models 
+  #Where the fitted model coefficients and Lp matrix live
+    model_files = list.files("./data/")
+    model_true = grepl("*GAM*.*var|*var.*GAM*", model_files)
+
+    #Which are the model files? 
+    model_files = model_files[model_true == TRUE ]
+    n_files = length(model_files)
+    #Loop and load the files 
+    for ( n in 1:n_files ){ 
+      x_tmp = load(paste("./data/", model_files[n],sep="") )
+      lake_models[[n]] = get(x_tmp)
+    }
+
+    #For each model, get the impacts of the other lakes: 
+    n_lakes = length(lake_models)
+    for (n in 1:n_lakes) {
+      smooth_terms = attr(model$terms, "term.labels")
+      lakes_in = vector("logical", n_lakes)
+      lexclude_tmp = NULL
+      lexclude_diff_tmp = NULL
+      other_lakes = lake_pre[-n]
+
+      #Check if each lake exists as terms in the model
+      #If it does, fit the "block effect" of all corresponding lake terms
+
+      for(li in 1:n_lakes){
+        #Use grep to find matching terms  
+        ltest = grep(lake_pre[li],smooth_terms )
+
+        #Test then do the prediction with this lake constant
+        if(length(ltest)>0){  
+          lakes_in[li] = TRUE 
+          selected_terms = smooth_terms[ltest]
+          selected_data = lake_data[[n]][1:date_index, ]
+          lexclude_tmp = cbind( lexclude_tmp, 
+                                plot_smooths_block(lake_models[[n]]$gam, 
+                                  selected_data, selected_terms)$predictions
+                              )
+          lexclude_diff_tmp = cbind(lexclude_diff_tmp, 
+                                    selected_data[,2] - lexclude_tmp[, dim(lexclude_tmp)[2]] 
+                                  )
+        }else{ lakes_in[li] = FALSE }
+
+      }
+
+        lexclude_tmp = cbind(level=selected_data$level,rn =selected_data$rn, 
+                              lexclude_tmp, lexclude_diff_tmp)
+        lexclude[[n]] = lexclude_tmp
+        colnames(lexclude[[n]]) = c("level", "rn", other_lakes, other_lakes)
+
+      }
+
+
+      #Simple plots: 
+      col_use_diffs = c("black", "green", "blue")
+      par(mfrow = c(2,1)) 
+
+      plot(lexclude[[n]][,6], t="l", ylab = "Level contribution", xlab = "time")
+      for(tl in 2:(n_lakes-1)){
+        lines(lexclude[[n]][,(tl+5)], col = col_use_diffs[tl] )
+       }
+
+      plot( lexclude[[n]][,6],lexclude[[n]][,2], ylab = "Level contribution", 
+            xlab = "Rain")
+      for(tl in 2:(n_lakes-1)){
+        points(lexclude[[n]][,(tl+5)], lexclude[[n]][,2],col = col_use_diffs[tl] )
+       }
+
+       legend("topleft", legend = colnames(lexclude[[n]])[6:8], col =c(col_use_diffs), lty=1,
+        title = "Lake",)
+
+
 }
 
 ###############################################################################

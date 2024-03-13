@@ -463,6 +463,61 @@ predictFlashGAM = function(lake_data, fut_precip, lake_models, output=FALSE){
     
 }
 
+###############################################################################
+# Show how blocks of selected smooth terms influence the response.
+# This is designed to show how all of the terms of a certain type, e.g. all of 
+# a particular lake's terms (mon1,mon2,mon3...) influence level. 
+# Other blocks of terms are set to 0 so that only one block of effects is
+# highlighted.
+# 
+#Example usage
+# Assuming 'lake_model' is your fitted GAM model
+# plot_smooths_block(lake_model, selected_terms = c("s(x_1)", "s(x_2)", "s(x_3)"),
+#           varying_term = "x_1", varying_values = seq(0, 10, length.out = 100))
+#
+#
+###############################################################################
+
+plot_smooths_block = function(model, selected_data, selected_terms, newdata = NULL, ...) {
+ # Extract the names of all smooth terms in the model
+  smooth_terms = attr(model$terms, "term.labels")
+  
+  # Create a data frame to hold input data
+  # input_data = data.frame(matrix(0, nrow = length(varying_values), ncol = length(smooth_terms)))
+  # names(input_data) = smooth_terms
+  
+  input_data = selected_data
+
+  # Set constant value terms to their means
+  for (t in 1:length(smooth_terms)) {
+    term = smooth_terms[t]
+    if (term %in% selected_terms) {
+      input_data[[term]] = mean(model$smooth[[t]]$xp)
+    }
+  }
+  
+  # Set excluded terms to 0
+  # excluded_terms = setdiff(smooth_terms, selected_terms)
+  # input_data[, excluded_terms] = 0
+  
+  # Set varying term values
+  #input_data[[varying_term]] = varying_values
+  
+  # Predict using the model
+  predictions = predict(model, newdata = input_data, type="response")+input_data$level
+  
+  # Plot the effect of varying term
+  plot(predictions, type = "l", xlab = varying_term, ylab = "Level")
+  lines(input_data$level)
+
+  output = data.frame(input_data, predictions = predictions)
+
+  return(output)
+
+}
+
+
+
 ##############################################################
 # Generator function
 # 
