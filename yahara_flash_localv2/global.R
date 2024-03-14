@@ -1,8 +1,15 @@
+#Shiny libraries
 library(shiny)
 library(shinydashboard)
 library(shinyMatrix)
 library(rhandsontable)
 
+#For nicer plots:
+library(viridis)
+library(scales)
+library(cowplot)
+
+#The usuals
 library(tidyverse)
 library(lubridate)
 library(curl)
@@ -482,8 +489,9 @@ gam_plot_block = function(lake_data, input_date= c("2024-03-10") ){
 
         lexclude_tmp = cbind(level=selected_data$level,rn =selected_data$rn, 
                               lexclude_tmp, lexclude_diff_tmp)
-        lexclude[[n]] = lexclude_tmp
-        colnames(lexclude[[n]]) = c("level", "rn", lake_pre[lakes_in], lake_pre[lakes_in])
+        lexclude[[n]] = data.frame(lexclude_tmp, time = selected_data$dates)
+        colnames(lexclude[[n]]) = c("level", "rn", paste(lake_pre[lakes_in],"1", sep=""), 
+                                    lake_pre[lakes_in], "dates")
 
       #####################################################################
       #Simple plots: 
@@ -492,22 +500,44 @@ gam_plot_block = function(lake_data, input_date= c("2024-03-10") ){
       pdf(file=all_fig_names, height=8, width=8, onefile=TRUE, family='Helvetica', pointsize=16)
 
       col_use_diffs = c("black", "green", "blue")
-      par(mfrow = c(2,1)) 
+      lu = lake_pre[lakes_in]
 
-      plot(lexclude[[n]][,6], t="l", ylab = "Level contribution", xlab = "time")
-      for(tl in 2:(n_lakes-1)){
-        lines(lexclude[[n]][,(tl+5)], col = col_use_diffs[tl] )
+      layout.matrix=matrix(c(1,2,3), nrow = 3, ncol = 1)
+      layout(mat = layout.matrix,
+       heights = c(1.5, 3.5,1.5), # Heights of the rows
+       widths = c(10,10)) # Widths of the columns
+
+      par( mar = c(0.1,3,2,0.5) )
+      #1. First plot: bar graph of rain: 
+      barplot(lexclude[[n]]$rn, beside = TRUE, xaxt='n',
+              ylab = "Rain (cm)", main = paste(lake_pre[n]), cex.lab =1.3 )
+      #par(mfrow = c(2,1)) 
+
+
+      #2. Second plot: The influence of each covariate lake on response level
+      par( mar = c(0.1,4.5,0.1,2) )
+      plot(lexclude[[n]]$dates, lexclude[[n]][[lu[1]]], t="l", ylab = "Level contribution", 
+            xlab="", xaxt="n", xaxs="i",yaxs="i",cex.main=1.3,cex.lab=1.3)
+      for(tl in 2:length(lu)){
+        lines(lexclude[[n]]$dates, lexclude[[n]][[lu[tl]]], col = col_use_diffs[tl] )
        }
 
-      plot( lexclude[[n]][,6],lexclude[[n]][,2], ylab = "Level contribution", 
-            xlab = "Rain")
-      for(tl in 2:(n_lakes-1)){
-        points(lexclude[[n]][,(tl+5)], lexclude[[n]][,2],col = col_use_diffs[tl] )
-       }
-
-       legend("topleft", legend = colnames(lexclude[[n]])[6:8], col =c(col_use_diffs), lty=1,
+      #Add a legend 
+      legend("topleft", legend = lu, col =c(col_use_diffs), lty=1,
         title = "Lake",)
     
+      #3. Third plot: Lake level 
+      par( mar = c(3,4.5,0.1,2) )
+      plot(lexclude[[n]]$dates, lexclude[[n]]$level, t="l", ylab = "Lake level", 
+            xlab="Date", xaxs="i",yaxs="i",cex.main=1.3,cex.lab=1.3)
+
+      # plot( lexclude[[n]][[lu[1]]],lexclude[[n]]$rn, ylab = "Level contribution", 
+      #       xlab = "Rain")
+      # for(tl in 2:length(lu)){
+      #   points(lexclude[[n]][[lu[tl]]], lexclude[[n]]$rn,col = col_use_diffs[tl] )
+      #  }
+
+
 
     dev.off()
   }
